@@ -2,6 +2,8 @@
 
 Language support for Raga (`.raga`): highlighting, snippets, and an analyzer that infers types and helps while you type.
 
+Raga is a language design, not an implementation: the analyzer checks code against the design rules, it does not compile or run it.
+
 ## What it does
 
 - **Type inference** for primitives, non-primitive values, generics, collections, pointers, `Optional` and `Result`,
