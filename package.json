@@ -1,0 +1,81 @@
+{
+  "name": "raga-lang",
+  "displayName": "Raga",
+  "description": "Language support for the Raga programming language (.raga): type inference, completion, signature help, go to definition, rename, outline and inlay hints",
+  "version": "0.1.0",
+  "publisher": "raga-lang",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Snippets"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "raga",
+        "aliases": [
+          "Raga",
+          "raga"
+        ],
+        "extensions": [
+          ".raga"
+        ],
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./icons/raga-light.svg",
+          "dark": "./icons/raga-dark.svg"
+        }
+      }
+    ],
+    "grammars": [
+      {
+        "language": "raga",
+        "scopeName": "source.raga",
+        "path": "./syntaxes/raga.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "raga",
+        "path": "./snippets/raga.json"
+      }
+    ],
+    "configurationDefaults": {
+      "[raga]": {
+        "editor.occurrencesHighlight": "off",
+        "editor.selectionHighlight": false,
+        "editor.quickSuggestions": {
+          "other": true,
+          "comments": false,
+          "strings": true
+        },
+        "editor.suggest.snippetsPreventQuickSuggestions": false,
+        "editor.parameterHints.enabled": true,
+        "editor.wordBasedSuggestions": "off"
+      }
+    },
+    "configuration": {
+      "title": "Raga",
+      "properties": {
+        "raga.inlayHints.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the inferred type after a name declared with const or let, after loop names and after the names of a trailing block."
+        },
+        "raga.diagnostics.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Report undeclared names, unknown members, wrong argument counts and other mistakes while typing."
+        }
+      }
+    }
+  },
+  "main": "./extension.js",
+  "activationEvents": [
+    "onLanguage:raga"
+  ],
+  "icon": "icons/raga.png"
+}

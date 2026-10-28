@@ -1,0 +1,377 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Raga",
+  "scopeName": "source.raga",
+  "patterns": [
+    {
+      "include": "#comment"
+    },
+    {
+      "include": "#string"
+    },
+    {
+      "include": "#char"
+    },
+    {
+      "include": "#number"
+    },
+    {
+      "include": "#block-params"
+    },
+    {
+      "include": "#attribute-name"
+    },
+    {
+      "include": "#declaration"
+    },
+    {
+      "include": "#attribute-call-clause"
+    },
+    {
+      "include": "#keyword"
+    },
+    {
+      "include": "#accessor-part"
+    },
+    {
+      "include": "#storage"
+    },
+    {
+      "include": "#constant"
+    },
+    {
+      "include": "#block-slot"
+    },
+    {
+      "include": "#builtin-type"
+    },
+    {
+      "include": "#builtin-function"
+    },
+    {
+      "include": "#builtin-heap-type"
+    },
+    {
+      "include": "#type-name"
+    },
+    {
+      "include": "#method-call"
+    },
+    {
+      "include": "#property"
+    },
+    {
+      "include": "#function-call"
+    },
+    {
+      "include": "#spread"
+    },
+    {
+      "include": "#operator"
+    }
+  ],
+  "repository": {
+    "comment": {
+      "name": "comment.line.double-slash.raga",
+      "match": "//.*$"
+    },
+    "string": {
+      "name": "string.quoted.double.raga",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        {
+          "name": "constant.character.escape.raga",
+          "match": "\\\\."
+        }
+      ]
+    },
+    "number": {
+      "patterns": [
+        {
+          "name": "constant.numeric.float.raga",
+          "match": "\\b\\d[\\d_]*\\.\\d[\\d_]*([eE][+-]?\\d+)?\\b|\\b\\d[\\d_]*[eE][+-]?\\d+\\b"
+        },
+        {
+          "name": "constant.numeric.integer.hexadecimal.raga",
+          "match": "\\b0[xX][0-9a-fA-F_]+\\b"
+        },
+        {
+          "name": "constant.numeric.integer.binary.raga",
+          "match": "\\b0[bB][01_]+\\b"
+        },
+        {
+          "name": "constant.numeric.integer.octal.raga",
+          "match": "\\b0[oO][0-7_]+\\b"
+        },
+        {
+          "name": "constant.numeric.integer.decimal.raga",
+          "match": "\\b\\d[\\d_]*\\b"
+        }
+      ]
+    },
+    "block-params": {
+      "begin": "\\|(?=[\\s\\w,]*\\|\\s*[{}])",
+      "end": "\\|",
+      "beginCaptures": {
+        "0": {
+          "name": "punctuation.definition.parameters.begin.raga"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.parameters.end.raga"
+        }
+      },
+      "patterns": [
+        {
+          "name": "variable.parameter.raga",
+          "match": "[A-Za-z_]\\w*"
+        },
+        {
+          "name": "punctuation.separator.comma.raga",
+          "match": ","
+        }
+      ]
+    },
+    "declaration": {
+      "patterns": [
+        {
+          "match": "\\b(const|let)\\s+([A-Za-z_]\\w*)\\s*(=)\\s*(function|method)\\b",
+          "captures": {
+            "1": {
+              "name": "storage.type.raga"
+            },
+            "2": {
+              "name": "entity.name.function.raga"
+            },
+            "3": {
+              "name": "keyword.operator.assignment.raga"
+            },
+            "4": {
+              "name": "storage.type.raga"
+            }
+          }
+        },
+        {
+          "match": "\\b(const|let)\\s+([A-Za-z_]\\w*)\\s*(=)\\s*(class|interface|trait|struct|union|enum|attribute)\\b",
+          "captures": {
+            "1": {
+              "name": "storage.type.raga"
+            },
+            "2": {
+              "name": "entity.name.type.raga"
+            },
+            "3": {
+              "name": "keyword.operator.assignment.raga"
+            },
+            "4": {
+              "name": "storage.type.raga"
+            }
+          }
+        },
+        {
+          "match": "\\b(?:(const|let)\\s+)?(i8|u8|i16|u16|i32|u32|i64|u64|i128|u128|isize|usize|f32|f64|f128|bool|char)\\s+([A-Za-z_]\\w*)(?=\\s*=(?!=))",
+          "captures": {
+            "1": {
+              "name": "storage.type.raga"
+            },
+            "2": {
+              "name": "support.type.raga"
+            },
+            "3": {
+              "name": "variable.other.definition.raga"
+            }
+          }
+        },
+        {
+          "match": "\\b(?:(const|let)\\s+)?(String|Array|List|Map|Set|Tuple|Optional|Result)(<[^>\\n]*>)?\\s+([A-Za-z_]\\w*)(?=\\s*=(?!=))",
+          "captures": {
+            "1": {
+              "name": "storage.type.raga"
+            },
+            "2": {
+              "name": "support.class.builtin.raga"
+            },
+            "4": {
+              "name": "variable.other.definition.raga"
+            }
+          }
+        },
+        {
+          "match": "\\b(?:(const|let)\\s+)?(ptr)(<[^>\\n]*>)\\s+([A-Za-z_]\\w*)(?=\\s*=(?!=))",
+          "captures": {
+            "1": {
+              "name": "storage.type.raga"
+            },
+            "2": {
+              "name": "support.type.raga"
+            },
+            "4": {
+              "name": "variable.other.definition.raga"
+            }
+          }
+        },
+        {
+          "match": "\\b(?:(const|let)\\s+)?([A-Z]\\w*)(?:\\([^)\\n]*\\))?\\s+([A-Za-z_]\\w*)(?=\\s*=(?!=))",
+          "captures": {
+            "1": {
+              "name": "storage.type.raga"
+            },
+            "2": {
+              "name": "entity.name.type.raga"
+            },
+            "3": {
+              "name": "variable.other.definition.raga"
+            }
+          }
+        },
+        {
+          "match": "\\b(const|let)\\s+([A-Za-z_]\\w*)",
+          "captures": {
+            "1": {
+              "name": "storage.type.raga"
+            },
+            "2": {
+              "name": "variable.other.definition.raga"
+            }
+          }
+        }
+      ]
+    },
+    "attribute-name": {
+      "comment": "The names of the special attributes: [class(...)], [method(...)], [field(...)], [accessor(...)], [get(...)], [set(...)]",
+      "match": "(?<=[\\[,])\\s*(class|method|field|accessor|get|set|deprecated|on|operator)\\b(?=\\s*[(\\],])",
+      "captures": {
+        "1": {
+          "name": "entity.other.attribute-name.raga"
+        }
+      }
+    },
+    "accessor-part": {
+      "comment": "The parts of an accessor: const marks = get { ... } set |value| { ... }",
+      "match": "(?<==|\\})\\s*(get|set)(?=\\s*(\\{|\\|))",
+      "captures": {
+        "1": {
+          "name": "storage.type.raga"
+        }
+      }
+    },
+    "keyword": {
+      "name": "keyword.control.raga",
+      "match": "\\b(if|elif|else|for|while|loop|break|continue|return|try|catch|finally|match|switch|case|default|throw|extends|implements|use)\\b"
+    },
+    "attribute-call-clause": {
+      "comment": "The call clause of an attribute: } call |target, args, next| { ... }",
+      "match": "(?<=[})])\\s*\\b(call)\\b(?=\\s*[|{])",
+      "captures": { "1": { "name": "keyword.control.raga" } }
+    },
+    "storage": {
+      "name": "storage.type.raga",
+      "match": "\\b(const|let|function|method|class|interface|trait|struct|union|enum|attribute)\\b"
+    },
+    "constant": {
+      "patterns": [
+        {
+          "name": "constant.language.boolean.raga",
+          "match": "\\b(true|false)\\b"
+        },
+        {
+          "name": "constant.language.null.raga",
+          "match": "\\bnull\\b"
+        },
+        {
+          "name": "variable.language.this.raga",
+          "match": "\\b(this|super)\\b"
+        }
+      ]
+    },
+    "block-slot": {
+      "comment": "Chained block labels such as `} fail |e| {` or `} done {`",
+      "match": "(?<=\\})\\s*([A-Za-z_]\\w*)(?=\\s*(\\{|\\|))",
+      "captures": {
+        "1": {
+          "name": "keyword.control.chain.raga"
+        }
+      }
+    },
+    "builtin-type": {
+      "name": "support.type.raga",
+      "match": "\\b(i8|u8|i16|u16|i32|u32|i64|u64|i128|u128|isize|usize|f32|f64|f128|bool|char|int|float|ptr)(?=\\s*\\()"
+    },
+    "builtin-function": {
+      "name": "support.function.builtin.raga",
+      "match": "(?:\\b(print|len|range|str|read_line|sleep|typeof|addr|deref|store|export|import|attributes_of|get_field|set_field|reflect|compile|sizeof|alignof|alloc|free)|(?<![\\w$])\\$)(?=\\s*\\()"
+    },
+    "type-name": {
+      "name": "entity.name.type.raga",
+      "match": "\\b[A-Z][A-Za-z0-9_]*\\b"
+    },
+    "method-call": {
+      "match": "(\\.)\\s*([A-Za-z_]\\w*)(?=\\s*[(|{])",
+      "captures": {
+        "1": {
+          "name": "punctuation.accessor.raga"
+        },
+        "2": {
+          "name": "entity.name.function.method.raga"
+        }
+      }
+    },
+    "property": {
+      "match": "(\\.)\\s*([A-Za-z_]\\w*)",
+      "captures": {
+        "1": {
+          "name": "punctuation.accessor.raga"
+        },
+        "2": {
+          "name": "variable.other.property.raga"
+        }
+      }
+    },
+    "function-call": {
+      "name": "entity.name.function.call.raga",
+      "match": "\\b[A-Za-z_]\\w*(?=\\s*\\()"
+    },
+    "spread": {
+      "name": "keyword.operator.spread.raga",
+      "match": "\\.\\.\\."
+    },
+    "operator": {
+      "patterns": [
+        {
+          "name": "keyword.operator.assignment.compound.raga",
+          "match": "<<=|>>=|\\+=|-=|\\*=|/=|%=|&=|\\|=|\\^="
+        },
+        {
+          "name": "keyword.operator.logical.raga",
+          "match": "&&|\\|\\||!(?!=)"
+        },
+        {
+          "name": "keyword.operator.comparison.raga",
+          "match": "==|!=|<=|>=|<(?!<)|>(?!>)"
+        },
+        {
+          "name": "keyword.operator.bitwise.raga",
+          "match": "<<|>>|&|\\||\\^|~"
+        },
+        {
+          "name": "keyword.operator.arithmetic.raga",
+          "match": "\\+|-|\\*|/(?!/)|%"
+        },
+        {
+          "name": "keyword.operator.assignment.raga",
+          "match": "="
+        }
+      ]
+    },
+    "char": {
+      "name": "constant.character.raga",
+      "match": "'(\\\\.|[^'\\\\])'"
+    },
+    "builtin-heap-type": {
+      "name": "support.class.builtin.raga",
+      "match": "\\b(String|Array|List|Map|Set|Tuple|Optional|Result)\\b"
+    }
+  }
+}

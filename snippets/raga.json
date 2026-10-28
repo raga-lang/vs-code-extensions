@@ -1,0 +1,315 @@
+{
+  "function": {
+    "prefix": "function",
+    "body": [
+      "const ${1:name} = function(${2:i32 value}) ${3:i32} {",
+      "\t$0",
+      "}"
+    ],
+    "description": "Function"
+  },
+  "class": {
+    "prefix": "class",
+    "body": [
+      "const ${1:Name} = class {",
+      "\tString ${2:field} = \"\"",
+      "",
+      "\tconst constructor = method(String ${2:field}) {",
+      "\t\tthis.${2:field} = ${2:field}",
+      "\t}",
+      "",
+      "\tconst ${3:method_name} = method() ${4:String} {",
+      "\t\t$0",
+      "\t}",
+      "}"
+    ],
+    "description": "Class with a field, a constructor and a method"
+  },
+  "classext": {
+    "prefix": "classext",
+    "body": [
+      "const ${1:Name} = class {",
+      "\t$0",
+      "} extends(${2:Base}) implements(${3:IFace})"
+    ],
+    "description": "Class with extends/implements"
+  },
+  "interface": {
+    "prefix": "interface",
+    "body": [
+      "const ${1:IName} = interface {",
+      "\t[method(Inheritance.Abstract)]",
+      "\tconst ${2:method_name} = method() ${3:String}",
+      "}"
+    ],
+    "description": "Interface"
+  },
+  "if": {
+    "prefix": "if",
+    "body": [
+      "if (${1:cond}) {",
+      "\t$0",
+      "}"
+    ]
+  },
+  "ifelse": {
+    "prefix": "ifelse",
+    "body": [
+      "if (${1:cond}) {",
+      "\t$2",
+      "} else {",
+      "\t$0",
+      "}"
+    ]
+  },
+  "for": {
+    "prefix": "for",
+    "body": [
+      "for (${1:items}) |${2:item}| {",
+      "\t$0",
+      "}"
+    ]
+  },
+  "while": {
+    "prefix": "while",
+    "body": [
+      "while (${1:cond}) {",
+      "\t$0",
+      "}"
+    ]
+  },
+  "loop": {
+    "prefix": "loop",
+    "body": [
+      "loop {",
+      "\t$0",
+      "}"
+    ]
+  },
+  "try": {
+    "prefix": "try",
+    "body": [
+      "try {",
+      "\t$1",
+      "} catch |${2:e}| {",
+      "\t$3",
+      "} finally {",
+      "\t$0",
+      "}"
+    ]
+  },
+  "match": {
+    "prefix": "match",
+    "body": [
+      "match (${1:value}) {",
+      "\tcase (${2:x}) { $3 }",
+      "\tdefault { $0 }",
+      "}"
+    ]
+  },
+  "switch": {
+    "prefix": "switch",
+    "body": [
+      "switch (${1:value}) {",
+      "\tcase (${2:1}) { $3 }",
+      "\tdefault { $0 }",
+      "}"
+    ]
+  },
+  "trait": {
+    "prefix": "trait",
+    "body": [
+      "const ${1:Name} = trait {",
+      "\t[method(Inheritance.Abstract)]",
+      "\tconst ${2:required_method} = method() ${3:String}",
+      "",
+      "\tconst ${4:provided_method} = method() {",
+      "\t\t$0",
+      "\t}",
+      "}"
+    ],
+    "description": "Trait with a required method and a method that has a body"
+  },
+  "struct": {
+    "prefix": "struct",
+    "body": [
+      "const ${1:Name} = struct {",
+      "\t${2:i32} ${3:field}",
+      "\t$0",
+      "}"
+    ],
+    "description": "Struct"
+  },
+  "enum": {
+    "prefix": "enum",
+    "body": [
+      "const ${1:Name} = enum {",
+      "\tconst ${2:First} = 0",
+      "\tconst ${3:Second} = 1",
+      "}"
+    ],
+    "description": "Enum: every member is a const with its own integer value"
+  },
+  "union": {
+    "prefix": "union",
+    "body": [
+      "const ${1:Name} = union {",
+      "\tconst ${2:First} = struct { ${3:i32} ${4:field} }",
+      "\tconst ${5:Second} = struct { }",
+      "\tconst ${6:Outside} = ${6:Outside}",
+      "}"
+    ],
+    "description": "Tagged union: variants declared inside, or named from outside as const Name = Name"
+  },
+  "attribute": {
+    "prefix": "attribute",
+    "body": [
+      "const ${1:name} = attribute(${2:String} ${3:value})"
+    ],
+    "description": "Attribute that only stores metadata"
+  },
+  "callback": {
+    "prefix": "callback",
+    "body": [
+      "const ${1:name} = function(${2:i32 value}, function(${3:i32}) ${4:i32} ${5:callback}) ${4:i32} {",
+      "\t$0",
+      "}"
+    ],
+    "description": "Function that takes a callback"
+  },
+  "import": {
+    "prefix": "import",
+    "body": [
+      "const ${1:name} = import(\"${2:./path/to/file}\")"
+    ],
+    "description": "Import a module"
+  },
+  "export": {
+    "prefix": "export",
+    "body": [
+      "export(${1:name})"
+    ],
+    "description": "Share names of this file, the last statement of the file"
+  },
+  "method": {
+    "prefix": "method",
+    "body": [
+      "const ${1:name} = method(${2:i32 value}) ${3:i32} {",
+      "\t$0",
+      "}"
+    ],
+    "description": "Method of a class"
+  },
+  "overload": {
+    "prefix": "overload",
+    "body": [
+      "const ${1:name} = method() ${2:String} {",
+      "\t$3",
+      "} method(${4:String other}) ${2:String} {",
+      "\t$0",
+      "}"
+    ],
+    "description": "Method with an overload: the next form follows the closing brace"
+  },
+  "accessor": {
+    "prefix": "accessor",
+    "body": [
+      "${1:i32} _${2:property} = ${3:0}",
+      "const ${2:property} = get {",
+      "\treturn this._${2:property}",
+      "} set |value| {",
+      "\tthis._${2:property} = value",
+      "}"
+    ],
+    "description": "Accessor with get and set over a field"
+  },
+  "field": {
+    "prefix": "field",
+    "body": [
+      "${1:String} ${2:name} = ${3:\"\"}"
+    ],
+    "description": "Field of a class with its first value"
+  },
+  "map": {
+    "prefix": "map",
+    "body": [
+      "Map<${1:String}, ${2:i32}> ${3:entries} = Map<${1:String}, ${2:i32}>()"
+    ],
+    "description": "An empty Map: keys of any type, values of one type"
+  },
+  "fnret": {
+    "prefix": "fnret",
+    "body": [
+      "const ${1:select} = function(${2:i32 input}) function(${3:i32}) ${4:i32} {",
+      "\t$0",
+      "\treturn ${5:declared_function}",
+      "}"
+    ],
+    "description": "A function that returns a declared function: the return type is a function type"
+  },
+  "closure": {
+    "prefix": "closure",
+    "body": [
+      "const ${1:outer} = function(${2:i32 start}) function() ${3:i32} {",
+      "\tlet ${4:state} = ${5:0}",
+      "\tconst ${6:inner} = function() ${3:i32} {",
+      "\t\t$0",
+      "\t}",
+      "\treturn ${6:inner}",
+      "}"
+    ],
+    "description": "A function that returns a closure: variables the inner function uses live as long as it does"
+  },
+  "attrmeta": {
+    "prefix": "attrmeta",
+    "body": [
+      "const ${1:note} = attribute(${2:String} ${3:text})"
+    ],
+    "description": "Attribute: metadata only, read with attributes_of"
+  },
+  "attrhook": {
+    "prefix": "attrhook",
+    "body": [
+      "const ${1:name} = attribute(${2:String} ${3:value}) |target, ${3:value}| {",
+      "\t$0",
+      "}"
+    ],
+    "description": "Attribute with a build hook: runs once per use while the program is built"
+  },
+  "attrcall": {
+    "prefix": "attrcall",
+    "body": [
+      "const ${1:name} = attribute(${2:String} ${3:value}) |target, ${3:value}| {",
+      "\t$4",
+      "} call |target, args, next| {",
+      "\treturn next(args)",
+      "}"
+    ],
+    "description": "Attribute with a build hook and a call hook: the call hook runs on every call"
+  },
+  "modifiers": {
+    "prefix": "modifiers",
+    "body": [
+      "[method(Visibility.${1|Public,Protected,Private|}, Ownership.${2|Instance,Static|}, Inheritance.${3|Virtual,Override,Final,Abstract|})]"
+    ],
+    "description": "Modifiers of a method: the three enums"
+  },
+  "structdef": {
+    "prefix": "structdef",
+    "body": [
+      "const ${1:Name} = struct {",
+      "\t${2:f64} ${3:x} = ${4:0.0}",
+      "\t${5:f64} ${6:y}",
+      "\t$0",
+      "}"
+    ],
+    "description": "Struct with a default value (a field without = is required when the value is created)"
+  },
+  "breakout": {
+    "prefix": "breakout",
+    "body": [
+      "break ${1:1}"
+    ],
+    "description": "break with a count: how many loops around the innermost one are left too (0 is the innermost loop only)"
+  }
+}
