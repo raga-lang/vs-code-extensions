@@ -35,7 +35,7 @@ const KEYWORD_DOC = {
   extends: 'A class extends at most one class: class { } extends(Base)',
   implements: 'A class implements interfaces: class { } implements(IFace)',
   use: 'A class uses traits: class { } use(Trait)',
-  export: 'export(a, b) as the last statement of a file shares those names with files that import it. It is a function whose arguments are names of this file.',
+  export: 'export { a, b } as the last statement of a file shares those names with files that import it. It takes an Array block of names of this file, written without parentheses.',
   this: 'The value a method was called on.',
   super: 'The class that this class extends.',
   null: 'The empty ptr<T>. null is not a value of any other type.',

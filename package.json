@@ -2,7 +2,7 @@
   "name": "raga-lang",
   "displayName": "Raga",
   "description": "Language support for the Raga programming language (.raga): type inference, completion, signature help, go to definition, rename, outline and inlay hints",
-  "version": "0.1.3",
+  "version": "0.1.5",
   "publisher": "raga",
   "license": "MIT",
   "engines": {

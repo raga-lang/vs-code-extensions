@@ -293,7 +293,7 @@ const Error = class {
 // The numbers of range(from, to).
 const Range = struct<T> { }
 
-// Shares names of this file with the files that import it: export(a, b), the last statement of the file.
+// Shares names of this file with the files that import it: export { a, b }, the last statement of the file.
 const export = function() { }
 
 // The value of import(path): its exported names are reached with a dot.

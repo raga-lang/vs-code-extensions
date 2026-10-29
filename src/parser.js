@@ -35,7 +35,6 @@ class Parser {
     this.i = 0;
     this.errors = [];
     this.paren = 0;
-    this.noBlockCall = false;      // true while a paren-less argument is read: a block there belongs to the outer call
   }
 
   get tok() { return this.tk[this.i]; }
@@ -376,35 +375,39 @@ class Parser {
     return { k: 'Return', value, s: kw.s, e: this.prevEnd() };
   }
 
-  // export(a, b): a call whose arguments are names of this file's declarations
+  // export { a, b }: a call whose last argument is a block of names of this file's declarations
   parseExport() {
     const kw = this.next();
     const names = [];
-    if (this.is('{')) {
-      // the old block form, read so that the rest of the file is still understood
-      this.err('export is a function: write export(a, b)', kw);
-      this.next();
-      while (!this.is('}') && this.tok.t !== 'eof') {
+    const readNames = (close) => {
+      while (!this.is(close) && this.tok.t !== 'eof') {
         const n = this.ident();
-        if (!n) { this.err('expected a name'); this.next(); continue; }
-        names.push(n);
+        if (!n) {
+          this.err('export takes names of declarations of this file: export { a, b }');
+          while (!this.is(',') && !this.is(close) && this.tok.t !== 'eof') this.next();
+        } else names.push(n);
         if (!this.eat(',')) break;
       }
-      const close = this.expect('}');
+    };
+    if (this.is('(')) {
+      // the old form with parentheses, read so that the rest of the file is still understood
+      this.err('export takes a block of names: write export { a, b }', kw);
+      this.next();
+      this.paren++;
+      readNames(')');
+      this.paren--;
+      const close = this.expect(')');
       return { k: 'Export', names, kwTok: kw, s: kw.s, e: close ? close.e : this.prevEnd() };
+    }
+    if (!this.is('{')) {
+      this.err('export takes a block of names: write export { a, b }', kw);
+      return { k: 'Export', names, kwTok: kw, s: kw.s, e: this.prevEnd() };
     }
     this.next();
     this.paren++;
-    while (!this.is(')') && this.tok.t !== 'eof') {
-      const n = this.ident();
-      if (!n) {
-        this.err('export takes names of declarations of this file: export(a, b)');
-        while (!this.is(',') && !this.is(')') && this.tok.t !== 'eof') this.next();
-      } else names.push(n);
-      if (!this.eat(',')) break;
-    }
+    readNames('}');
     this.paren--;
-    const close = this.expect(')');
+    const close = this.expect('}');
     return { k: 'Export', names, kwTok: kw, s: kw.s, e: close ? close.e : this.prevEnd() };
   }
 
@@ -479,11 +482,7 @@ class Parser {
   // ---------------------------------------------------------------- expressions
 
   parseExpr() {
-    const saved = this.noBlockCall;
-    this.noBlockCall = false;
-    const r = this.parseBinary(1);
-    this.noBlockCall = saved;
-    return r;
+    return this.parseBinary(1);
   }
 
   binOp() {
@@ -561,7 +560,7 @@ class Parser {
     return this.finishCall(call);
   }
 
-  // what may follow a call: a trailing block, then chain clauses
+  // what may follow a call: a trailing block, then the next steps of a chain
   finishCall(call) {
     // a trailing block: f(x) |n| { ... } or f(x) { ... }
     const pipes = this.attempt(() => {
@@ -573,15 +572,26 @@ class Parser {
       call.block = this.parseTrailingBlock(pipes || []);
       call.e = this.prevEnd();
     }
-    // chain clauses: when(a) { } or_when(b) { } otherwise { }
+    // a chain: calls that return values are chained with a dot, user().select().limit(1). When the last argument of a
+    // call is a block (a callback, an Array or a struct), a dot after the closing brace would look strange, so the next
+    // name follows the brace on the same line without it:  user { } select { } limit (1). Each step is a call of a member
+    // of what the step before it gave back, with its block as the last argument. A step may end with its block or with
+    // its parentheses.
     while (this.tok.t === 'id' && !this.tok.nl && !KEYWORDS.has(this.tok.v) && (this.isAt(1, '(') || this.isAt(1, '|') || this.isAt(1, '{'))) {
       const nameTok = this.next();
       let cargs = [];
       if (this.is('(')) cargs = this.parseArgs();
-      const params = this.is('|') ? this.parsePipes() : [];
-      const blk = this.parseTrailingBlock(params);
-      const body = blk.body;
-      (call.clauses || (call.clauses = [])).push({ name: nameTok.v, nameTok, args: cargs, params, body, items: blk.items, s: nameTok.s, e: body.e });
+      const cpipes = this.attempt(() => {
+        if (!(this.is('|') && this.looksLikePipes0())) return null;
+        const names = this.parsePipes();
+        return this.is('{') ? names : null;
+      });
+      const hasBlock = !!cpipes || (this.is('{') && !this.tok.nl);
+      const blk = hasBlock ? this.parseTrailingBlock(cpipes || []) : null;
+      (call.clauses || (call.clauses = [])).push({
+        name: nameTok.v, nameTok, args: cargs, params: cpipes || [], body: blk ? blk.body : null, items: blk ? blk.items : null,
+        s: nameTok.s, e: blk ? blk.body.e : this.prevEnd(),
+      });
       call.e = this.prevEnd();
     }
     return call;
@@ -622,8 +632,10 @@ class Parser {
 
   // A call without parentheses. After a name, on the same line, the next token decides:
   //   { or |names| {    a trailing block and no argument:  run { ... }
-  //   a number, char, true/false, or a name (with .members and calls)    the one argument:  double 5, show user.name
-  // Anything else leaves the name alone: it is the function value.
+  //   a name            the one argument:  double base, show user.name, and a name with a block is a call too:
+  //                     double sum { 1, 2, 3 } is double(sum({ 1, 2, 3 }))
+  // A written-out value (a number, a String, true) is not a bare argument and needs the parentheses. Anything else
+  // leaves the name alone: it is the function value.
   tryParenless(e) {
     const t = this.tok;
     if (t.nl || t.t === 'eof') return null;
@@ -631,61 +643,31 @@ class Parser {
     if (e.name && (PRIMS.has(e.name) || /^[A-Z]/.test(e.name))) return null;
     const mk = (args) => ({ k: 'Call', callee: e, typeArgs: e.typeArgs || null, args, open: null, parenless: true, s: e.s, e: this.prevEnd(), closed: true, closeEnd: this.prevEnd() });
     if (t.t === 'p' && (t.v === '{' || (t.v === '|' && this.looksLikePipes()))) {
-      if (this.noBlockCall) return null;
       return this.finishCall(mk([]));
     }
     const arg = this.parenlessOperand();
     if (!arg) return null;
-    const call = mk([{ name: null, value: arg }]);
-    if (!this.noBlockCall && !this.tok.nl && (this.is('{') || (this.is('|') && this.looksLikePipes()))) {
-      this.err('a call with a trailing block keeps its parentheses: write f(x) { ... }');
-      return this.finishCall(call);
-    }
-    return call;
+    return mk([{ name: null, value: arg }]);
   }
 
   parenlessOperand() {
     const t = this.tok;
-    const prev = this.tk[this.i - 1];
-    if (t.t === 'num') { this.next(); return { k: 'Num', v: t.v, s: t.s, e: t.e }; }
-    if (t.t === 'chr') { this.next(); return { k: 'Char', v: t.v, s: t.s, e: t.e }; }
-    if (t.t === 'p' && (t.v === '-' || t.v === '+')) {
-      // a sign belongs to the number only in "f -5": a space before it and none after it
-      const n = this.peek();
-      if (t.s > prev.e && n.t === 'num' && n.s === t.e && !n.nl) {
-        this.next(); this.next();
-        const num = { k: 'Num', v: n.v, s: n.s, e: n.e };
-        return t.v === '-' ? { k: 'Unary', op: '-', expr: num, s: t.s, e: n.e } : { k: 'Num', v: n.v, s: t.s, e: n.e };
-      }
-      return null;
-    }
-    if (t.t === 'str') {
-      this.err('a String is a non-primitive value and is not a bare argument: write f("text") with parentheses', t);
+    const written = t.t === 'num' || t.t === 'chr' || t.t === 'str' || (t.t === 'p' && t.v === '[')
+      || (t.t === 'id' && (t.v === 'true' || t.v === 'false' || t.v === 'null'));
+    if (written) {
+      const what = t.t === 'str' ? 'a String' : t.t === 'p' ? 'a List' : t.t === 'id' ? t.v : 'a value';
+      this.err(`${what} is written out, so it needs parentheses: write f(...) and not f ${t.v}`, t);
       return this.parsePrimary();
     }
-    if (t.t === 'p' && t.v === '[') {
-      this.err('a List is not a bare argument: write f([...]) with parentheses', t);
-      return this.parsePrimary();
+    if (t.t !== 'id' || (KEYWORDS.has(t.v) && t.v !== 'this')) return null;
+    // a name, with the members after it. A name after it, or a block, makes it a call without parentheses in its turn
+    let e = this.parsePrimary();
+    while (this.is('.') && this.peek().t === 'id' && !this.peek().nl && !KEYWORDS.has(this.peek().v)) {
+      this.next();
+      const nameTok = this.next();
+      e = { k: 'Member', obj: e, name: nameTok.v, nameTok, typeArgs: null, s: e.s, e: this.prevEnd() };
     }
-    if (t.t === 'p' && (t.v === '!' || t.v === '~')) {
-      this.err(`${t.v}x is not a bare argument: write f(${t.v}x) with parentheses`, t);
-      return this.parseUnary();
-    }
-    if (t.t === 'id') {
-      if (t.v === 'true' || t.v === 'false') { this.next(); return { k: 'Bool', v: t.v, s: t.s, e: t.e }; }
-      if (t.v === 'null') {
-        this.err('null is not a bare argument: write f(null) with parentheses', t);
-        this.next();
-        return { k: 'Null', s: t.s, e: t.e };
-      }
-      if (KEYWORDS.has(t.v) && t.v !== 'this') return null;
-      const saved = this.noBlockCall;
-      this.noBlockCall = true;
-      const operand = this.parsePostfix(this.parsePrimary());
-      this.noBlockCall = saved;
-      return operand;
-    }
-    return null;
+    return this.tryParenless(e) || e;
   }
 
   parsePostfix(e) {

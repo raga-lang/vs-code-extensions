@@ -1259,6 +1259,13 @@ class Analysis {
         this.diag(node.s, node.e, `${name} is generic and has no single type: write ${name}<${t.tparams.join(', ')}> with the types filled in`);
         return T.unk;
       }
+      // the name of a function with no parameters, with nothing after it, is a call: `answer` is answer(). Where a
+      // function is wanted (an argument or a variable of a function type) the name is the function itself.
+      if (t && t.k === 'fn' && !asCallee && !node.typeArgs && !t.overloads && !(t.tparams && t.tparams.length) && t.params.length === 0
+        && !(expected && expected.k === 'fn') && !this.isPrelude) {
+        node.bareCall = true;
+        return t.ret || T.void;
+      }
       return t;
     }
     if (PRIMS.has(name) || name === 'ptr') {
@@ -1880,7 +1887,7 @@ class Analysis {
       if (e) {
         cl.sym = e.sym;
         this.refs.push({ s: cl.nameTok.s, e: cl.nameTok.e, sym: e.sym, node: cl });
-        const fake = { callee: { k: 'Ident', name: cl.name, sym: e.sym }, args: cl.args, block: { params: cl.params, body: cl.body, items: cl.items, s: cl.body.s, e: cl.body.e }, s: cl.s, e: cl.e };
+        const fake = { callee: { k: 'Ident', name: cl.name, sym: e.sym }, args: cl.args, block: cl.body ? { params: cl.params, body: cl.body, items: cl.items, s: cl.body.s, e: cl.body.e } : null, s: cl.s, e: cl.e };
         // a clause takes its block as the last parameter
         const fnT = e.type;
         const r = fnT && fnT.k === 'fn' ? this.callFn(fnT, [], fake, scope, null, ctx) : T.unk;
@@ -1889,7 +1896,7 @@ class Analysis {
       } else {
         if (cur && cur.k === 'named' && this.isKnownShape(cur.sym) && !this.isPrelude) this.diag(cl.nameTok.s, cl.nameTok.e, `${str(cur)} has no method ${cl.name}`);
         cl.args.forEach((a) => this.inferExpr(a.value, scope, null, ctx));
-        this.checkTrailingBlock({ params: cl.params, body: cl.body }, null, scope, ctx);
+        if (cl.body) this.checkTrailingBlock({ params: cl.params, body: cl.body }, null, scope, ctx);
         cur = T.unk;
       }
     }

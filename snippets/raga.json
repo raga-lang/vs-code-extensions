@@ -187,7 +187,7 @@
   "export": {
     "prefix": "export",
     "body": [
-      "export(${1:name})"
+      "export { ${1:name} }"
     ],
     "description": "Share names of this file, the last statement of the file"
   },

@@ -2,7 +2,7 @@
 
 Language support for Raga (`.raga`): highlighting, snippets, and an analyzer that infers types and helps while you type.
 
-Raga is a language design, not an implementation: the analyzer checks code against the design rules, it does not compile or run it.
+The analyzer checks code against the rules of the language while you type. It is separate from the compiler (`ragac`, in the `raga` repository), and it does not compile or run code.
 
 ## What it does
 
@@ -69,18 +69,26 @@ Raga is a language design, not an implementation: the analyzer checks code again
   pipes (`target` first, then the declared parameters in order, or `...rest` for an attribute without parameters), nothing
   is in scope by magic and the number of names is checked.
 - **Calls without parentheses**: after a function name the next token on the same line decides. `{` or `|x| {` is a trailing
-  block with no argument outside it (`run { }`, `repeat |i| { }`, and `show { x = 1 }` for a function whose only parameter is a struct). A number (`double 5`, `double -5`), a char, `true`/`false`, or a name
-  with its `.members` and calls (`show user.name`, `double sum(xs)`, `double sum xs`) is the one argument. A String, List, Array,
-  Tuple, `null` or `!x` is not a bare argument and reports a hint to use parentheses, and a call with a trailing block keeps its
-  parentheses. `f -x` and `f - x` stay subtraction, `f -5` is `f(-5)`, and a name followed by an argument that is not a function
-  reports "x is not a function, it cannot take an argument". A bare name alone is still the function value.
+  block with no argument outside it (`run { }`, `repeat |i| { }`, and `show { x = 1 }` for a function whose only parameter is a struct).
+  A name, with its `.members`, is the one argument (`double base`, `show user.name`), and a name followed by another name nests to
+  the right, so `a b c` is `a(b(c))`. A name with a block is a call too, so it can be the argument: `double sum {1, 3, 4, 5}` is
+  `double(sum({1, 3, 4, 5}))`. A written-out value (a number, a char, `true`/`false`, a String, a List, `null`) is not a bare argument
+  and reports a hint to use parentheses: `double 5` is an error, write `double(5)`. `double -x` is the subtraction `double - x`,
+  and a name followed by an argument that is not a function reports "x is not a function, it cannot take an argument". The name of a
+  function that takes no parameters, with nothing after it, is a call (`answer` is `answer()`); where a function is wanted, as an
+  argument or a variable of a function type, a name is the function itself, and so is the name of a function that takes parameters.
+- **Chains without dots after a block**: calls that return values are chained with a dot, `user().select().limit(1)`. When the last
+  argument of a call is written as a block (a callback, an Array or a struct) a dot after the closing brace would look strange, so the
+  next name follows the brace on the same line: `user { } select { } limit (1)`. Each step is a call of a method of what the step before
+  it gave back, with its block as the last argument, so the arguments, the block and the order of the steps are checked against the
+  methods of the returned type.
 - **Signature help** for functions, methods (every overload) and struct or class creation.
 - **Struct and union fields with defaults** (`f64 x = 0.0`, `struct { f64 w = 1.0, f64 h = 1.0 }`): a field without a default must be given when the value is created, `Point()` is valid when every field has one, and `Bits32()` starts a union as its first field when that field has a default. Hover, signature help and named-argument completion show the defaults.
 - **Go to definition** (also into other files and through `import`), **find references**, **rename**, **outline**.
 - **Inlay hints**: the inferred type after `const` and `let` names, loop names and the names of a trailing block.
 - **Diagnostics** while you type: undeclared names, unknown fields and methods, wrong argument counts, struct creation
   rules, assigning to a `const`, a literal of the wrong kind or too large for its type, `null` for a non-pointer,
-  `return` outside a function, built-in names declared again, a type that holds itself directly, `export(a, b)` (a function, the last statement of a file) and `import`
+  `return` outside a function, built-in names declared again, a type that holds itself directly, `export { a, b }` (a block of names, the last statement of a file) and `import`
   mistakes, and modules that import each other.
 
 Naming style (snake_case, camelCase, Capitalized) is a convention and is never reported.
