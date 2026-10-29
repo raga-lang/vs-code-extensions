@@ -570,8 +570,7 @@ class Parser {
       return this.is('{') ? names : null;
     });
     if (pipes || (this.is('{') && !this.tok.nl)) {
-      const body = this.parseBlock();
-      call.block = { params: pipes || [], body, s: body.s, e: body.e };
+      call.block = this.parseTrailingBlock(pipes || []);
       call.e = this.prevEnd();
     }
     // chain clauses: when(a) { } or_when(b) { } otherwise { }
@@ -580,11 +579,35 @@ class Parser {
       let cargs = [];
       if (this.is('(')) cargs = this.parseArgs();
       const params = this.is('|') ? this.parsePipes() : [];
-      const body = this.parseBlock();
-      (call.clauses || (call.clauses = [])).push({ name: nameTok.v, nameTok, args: cargs, params, body, s: nameTok.s, e: body.e });
+      const blk = this.parseTrailingBlock(params);
+      const body = blk.body;
+      (call.clauses || (call.clauses = [])).push({ name: nameTok.v, nameTok, args: cargs, params, body, items: blk.items, s: nameTok.s, e: body.e });
       call.e = this.prevEnd();
     }
     return call;
+  }
+
+  // The { } after a call fills the last parameter. Its meaning depends on that parameter's type, which the parser does
+  // not know, so a block is read twice: as a body (a function, or a struct written as name = value lines)
+  // and as an Array literal (a list of values). The analyzer picks the reading that the parameter's type asks for.
+  parseTrailingBlock(params) {
+    let items = null;
+    let after = null;
+    {
+      const m = this.i, ne = this.errors.length, pp = this.paren;
+      const lit = this.parseCollection('Array', '{', '}');
+      if (this.errors.length === ne) { items = lit; after = this.i; }
+      this.i = m; this.errors.length = ne; this.paren = pp;
+    }
+    const nb = this.errors.length;
+    const body = this.parseBlock();
+    if (items && this.errors.length > nb && after !== null) {
+      // only the Array reading is valid
+      this.errors.length = nb;
+      this.i = after;
+      return { params, body: { k: 'Block', body: [], s: items.s, e: items.e }, items, s: items.s, e: items.e };
+    }
+    return { params, body, items, s: body.s, e: body.e };
   }
 
   looksLikePipes0() {

@@ -37,8 +37,18 @@ Raga is a language design, not an implementation: the analyzer checks code again
   returned, a bare generic name is a value only where a function type is expected, and anywhere else it is reported.
 - **Operators**: `[operator(Op.Add)]` is checked on functions, struct methods and class methods: the member must exist in `Op`, and a
   binary operator takes two values (a function) or one besides the object (a method), a unary one takes one or none.
+- **Trailing blocks**: the block after a call is its last argument written in place. The type of the last parameter decides what
+  it is: a function type takes a function body (`|n| { return n }`), an `Array<T>` takes its values (`{ 1, 2, 3 }`, each one checked
+  against `T`), and a struct takes one `name = value` line per field (every field once, any order, each value checked against
+  its field, a missing, unknown or repeated field is reported). Any other last parameter, a variadic one, one already given
+  inside the parentheses (also when it was given by position), a `|names|` on an `Array` or struct block, and a creation such as
+  `Point(...) { }` report an error that says where the value goes instead. The same holds for a clause of a chain
+  (`begin { } headers { "a", "b" }`), because it is a call of a method. The declaration decides what `{ }` is: a function with no
+  parameters and a struct with no fields look the same, so the type of the last parameter is the only thing that tells them apart.
+- **Element types of a collection literal**: when a type is asked for (`Array<i32>`, `List<String>`, as a parameter, a declared variable or a trailing block), each element is checked against it, so `tally("scores") { 'f' }` reports `char is not i32`.
 - **Trailing blocks and chains in completion**: after the `)` of a call whose last parameter is a callback, completion offers the
   block that fills it, with the names the callback gives (`|result| { return }`, and `return` when the callback gives a value);
+  for an `Array` it offers `{ }` and for a struct it offers a block with one line per field (`name = `, `size = `);
   after a space it opens by itself. After the `}` of a block on the same line, it offers the next clauses of the chain, the
   methods of what the call gave back whose last parameter is a callback (`on_error |error| { }`, `cleanup { }`).
 - **Attribute call hooks on methods**: an attribute limited to methods with `[on(Kind.Method)]` has a call block with four parameters,
@@ -59,7 +69,7 @@ Raga is a language design, not an implementation: the analyzer checks code again
   pipes (`target` first, then the declared parameters in order, or `...rest` for an attribute without parameters), nothing
   is in scope by magic and the number of names is checked.
 - **Calls without parentheses**: after a function name the next token on the same line decides. `{` or `|x| {` is a trailing
-  block with no argument (`run { }`, `repeat |i| { }`). A number (`double 5`, `double -5`), a char, `true`/`false`, or a name
+  block with no argument outside it (`run { }`, `repeat |i| { }`, and `show { x = 1 }` for a function whose only parameter is a struct). A number (`double 5`, `double -5`), a char, `true`/`false`, or a name
   with its `.members` and calls (`show user.name`, `double sum(xs)`, `double sum xs`) is the one argument. A String, List, Array,
   Tuple, `null` or `!x` is not a bare argument and reports a hint to use parentheses, and a call with a trailing block keeps its
   parentheses. `f -x` and `f - x` stay subtraction, `f -5` is `f(-5)`, and a name followed by an argument that is not a function

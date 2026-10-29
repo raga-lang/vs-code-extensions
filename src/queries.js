@@ -341,6 +341,20 @@ function blockSnippet(ft, first, lead = ' ') {
 }
 function isUnkType(t) { return !t || t.k === 'unk'; }
 
+// the block for a last parameter that is an Array ({ 1, 2, 3 }) or a struct (name = value lines), or null for any other type
+function dataBlockSnippet(a, type, lead) {
+  if (!type || type.k !== 'named') return null;
+  const sym = type.sym;
+  if (sym.builtin && sym.name === 'Array') return { label: '{ }', insert: `${lead}{ \$1 }` };
+  if (sym.tkind === 'struct' && !sym.builtin) {
+    const fields = a.creationFields(sym);
+    if (!fields.length) return null;
+    const lines = fields.map((f, i) => `\t${f.name} = \$${i + 1}`).join('\n');
+    return { label: '{ ' + fields.map((f) => f.name + ' = …').join(', ') + ' }', insert: `${lead}{\n${lines}\n}` };
+  }
+  return null;
+}
+
 function trailingBlockCompletion(a, off, prefix, lineStart) {
   // the call that was just closed: name(args) | and the cursor is after the )
   const closeParen = /\)\s*$/.exec(prefix);
@@ -350,6 +364,11 @@ function trailingBlockCompletion(a, off, prefix, lineStart) {
     const ct = call && call.callee && call.callee.ty;
     if (ct && ct.k === 'fn' && ct.params.length) {
       const last = ct.params[ct.params.length - 1];
+      const lead0 = /\s$/.test(prefix) ? '' : ' ';
+      const data = last.type && last.type.k !== 'fn' && call.args.length < ct.params.length ? dataBlockSnippet(a, last.type, lead0) : null;
+      if (data) {
+        return { blockOnly: true, items: [item(data.label, 'snippet', `block for ${last.name || 'the last parameter'}: ${str(last.type)}`, 'Writes the value that fills the last parameter.', { sort: '00', insert: data.insert, snippet: true })] };
+      }
       if (last.type && last.type.k === 'fn' && call.args.length < ct.params.length) {
         const label = last.type.params.length ? `|${last.type.params.map((p) => p.name || 'value').join(', ')}| { }` : '{ }';
         const lead = /\s$/.test(prefix) ? '' : ' ';

@@ -1181,6 +1181,7 @@ class Analysis {
         const types = node.items.map((it, i) => plain(this.inferExpr(it, scope, exp[i], ctx)));
         return sym ? T.named(sym, types) : T.unk;
       }
+      case 'StructBlock': return this.inferStructBlock(node, scope, expected, ctx);
       case 'ListLit': case 'ArrayLit': return this.inferCollection(node, scope, expected, ctx);
       case 'Ident': return this.inferIdent(node, scope, expected, ctx, asCallee);
       case 'Unary': {
@@ -1219,6 +1220,8 @@ class Analysis {
     let elem = null;
     for (const it of node.items) {
       const t = this.inferExpr(it, scope, expElem || (elem && elem.k !== 'unk' ? elem : null), ctx);
+      // each element must fit the element type that is asked for: Array<i32> takes numbers, not 'f'
+      if (expElem && !hasParam(expElem)) this.checkCompatible(expElem, t, it);
       if (!elem || (elem.k === 'prim' && elem.lit && !(t && t.k === 'prim' && t.lit))) elem = t;
     }
     const result = elem && !isUnk(elem) ? plain(elem) : (expElem || T.unk);
@@ -1691,7 +1694,14 @@ class Analysis {
     explicit.forEach((t, i) => { if (names[i]) bindings.set(names[i], t); });
     let params = fn.params;
     const blockParam = node.block && params.length ? params[params.length - 1] : null;
+    // a block is the last argument written after the parentheses: a function, an Array or a struct
+    if (blockParam && !this.isPrelude && this.lastIsGiven(params, node)) {
+      const lastName = blockParam.name ? ` ${blockParam.name}` : '';
+      this.diag(node.block.s, node.block.s + 1, `the last parameter${lastName} is already given inside the parentheses, so this block would be one argument too many`);
+      node = Object.assign(Object.create(Object.getPrototypeOf(node)), node, { blockArg: true, blockSkipped: true });
+    } else if (blockParam && blockParam.type.k !== 'fn') node = this.dataBlockCall(node, blockParam, scope);
     const { pairs, used } = this.mapArgs(params, node);
+    if (node.blockSkipped) used.add(params.length - 1);
     const calleeSym = node.callee.sym;
     // arguments in the order written
     for (const { arg, param } of pairs) {
@@ -1720,7 +1730,7 @@ class Analysis {
       const ret = this.checkTrailingBlock(node.block, bt, scope, ctx);
       if (names.length && blockParam.type.ret) unify(blockParam.type.ret, ret, bindings, names);
       used.add(params.length - 1);
-    } else if (node.block) {
+    } else if (node.block && !node.blockArg) {
       this.checkTrailingBlock(node.block, null, scope, ctx);
     }
     this.checkArgCount(fn, node, params, used, calleeSym || (node.callee.k === 'Call' ? { name: 'the returned function', kind: 'func' } : null));
@@ -1747,6 +1757,73 @@ class Analysis {
     return ret;
   }
 
+  // the arguments inside the parentheses already fill the last parameter (or more than the parameters there are)
+  lastIsGiven(params, node) {
+    if (!params.length || params[params.length - 1].variadic) return false;
+    const { pairs, used } = this.mapArgs(params, node);
+    return used.has(params.length - 1) || pairs.some((p) => !p.param && !p.arg.name);
+  }
+
+  // The block after a call is its last argument written in place. A function type takes a function body (checkTrailingBlock).
+  // An Array takes a list of values, {1, 2, 3}, and a struct takes name = value lines. Both are turned into an ordinary
+  // argument for the last parameter, so that they are checked like any other argument.
+  dataBlockCall(node, param, scope) {
+    if (this.isPrelude) return node;
+    const block = node.block;
+    const t = param.type;
+    const skipped = (s, e, message) => {
+      this.diag(s, e, message);
+      return Object.assign(Object.create(Object.getPrototypeOf(node)), node, { blockArg: true, blockSkipped: true });
+    };
+    if (!t || isUnk(t) || t.k === 'param' || t.k === 'void') return node;
+    if (param.variadic) return skipped(block.s, block.s + 1, `${param.name || 'the last parameter'} is variadic and cannot take a block: write its values inside the parentheses`);
+    if (node.args.some((a) => a.name && a.name === param.name)) return skipped(block.s, block.s + 1, `${param.name} is already given inside the parentheses, the block fills the last parameter`);
+    const named = t.k === 'named' ? t.sym : null;
+    const isArray = named && named.builtin && named.name === 'Array';
+    const isStruct = named && named.tkind === 'struct' && !named.builtin;
+    if (!isArray && !isStruct) {
+      return skipped(block.s, block.s + 1, `the block fills the last parameter${param.name ? ` ${param.name}` : ''}, which is ${str(t)}: only a function, an Array or a struct can be written as a block, pass this one inside the parentheses`);
+    }
+    if (block.params.length) this.diag(block.params[0].s, block.params[0].e, `a block for ${str(t)} gives no values, it cannot name any`);
+    let value;
+    if (isArray) {
+      if (!block.items) return skipped(block.s, block.s + 1, 'an Array block is a list of values: { 1, 2, 3 }');
+      value = block.items;
+    } else {
+      value = { k: 'StructBlock', stmts: block.body.body, s: block.s, e: block.e };
+    }
+    return Object.assign(Object.create(Object.getPrototypeOf(node)), node, { args: [...node.args, { name: param.name || null, nameTok: null, value, fromBlock: true }], blockArg: true });
+  }
+
+  // { x = 1.0 } for a struct: every field is given by name, in any order
+  inferStructBlock(node, scope, expected, ctx) {
+    const sym = expected && expected.k === 'named' ? expected.sym : null;
+    if (!sym) return T.unk;
+    const fields = this.creationFields(sym);
+    const given = new Set();
+    for (const st of node.stmts) {
+      if (st.k !== 'Assign' || st.op !== '=' || st.target.k !== 'Ident') {
+        this.diag(st.s, st.e, `a block for ${sym.name} is made of lines like name = value`);
+        continue;
+      }
+      const f = fields.find((x) => x.name === st.target.name);
+      if (!f) {
+        this.diag(st.target.s, st.target.e, `${sym.name} has no field ${st.target.name}`);
+        this.inferExpr(st.value, scope, null, ctx);
+        continue;
+      }
+      this.refs.push({ s: st.target.s, e: st.target.e, sym: f, node: { sym: f } });
+      if (given.has(f.name)) this.diag(st.target.s, st.target.e, `${f.name} is given twice`);
+      given.add(f.name);
+      const ft = f.kind === 'property' ? (f.type || T.unk) : this.fieldType(f);
+      const vt = this.inferExpr(st.value, scope, ft, ctx);
+      this.checkCompatible(ft, vt, st.value);
+    }
+    const missing = fields.filter((f) => !given.has(f.name) && !f.defNode);
+    if (missing.length) this.diag(node.s, node.e, `${sym.name} needs ${missing.map((m) => m.name).join(', ')}`);
+    return expected;
+  }
+
   dropFree(t, names) {
     if (!t) return t;
     if (names.length && hasParam(t, names)) {
@@ -1764,7 +1841,7 @@ class Analysis {
     const given = node.args.filter((a) => !a.name).length;
     const named = node.args.filter((a) => a.name).length;
     const total = given + named;
-    const block = node.block ? 1 : 0;
+    const block = node.block && !node.blockArg ? 1 : 0;
     const max = params.length;
     if (total + block > max) {
       this.diag(node.s, node.e, `${calleeSym.name} takes ${max} argument${max === 1 ? '' : 's'}, but ${total + block} given`);
@@ -1803,7 +1880,7 @@ class Analysis {
       if (e) {
         cl.sym = e.sym;
         this.refs.push({ s: cl.nameTok.s, e: cl.nameTok.e, sym: e.sym, node: cl });
-        const fake = { callee: { k: 'Ident', name: cl.name, sym: e.sym }, args: cl.args, block: { params: cl.params, body: cl.body }, s: cl.s, e: cl.e };
+        const fake = { callee: { k: 'Ident', name: cl.name, sym: e.sym }, args: cl.args, block: { params: cl.params, body: cl.body, items: cl.items, s: cl.body.s, e: cl.body.e }, s: cl.s, e: cl.e };
         // a clause takes its block as the last parameter
         const fnT = e.type;
         const r = fnT && fnT.k === 'fn' ? this.callFn(fnT, [], fake, scope, null, ctx) : T.unk;
@@ -1907,7 +1984,10 @@ class Analysis {
       }
       void idx;
     }
-    if (node.block) this.checkTrailingBlock(node.block, null, scope, ctx);
+    if (node.block) {
+      if (!this.isPrelude) this.diag(node.block.s, node.block.s + 1, `creating ${sym.name} takes its values inside the parentheses, a block cannot follow`);
+      this.checkTrailingBlock(node.block, null, scope, ctx);
+    }
     let result = T.named(owner, owner.tparams.map((n) => bindings.get(n) || T.unk));
     if (expected && expected.k === 'named' && expected.sym === owner) {
       const exp = new Map();
