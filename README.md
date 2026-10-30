@@ -35,7 +35,7 @@ The analyzer checks code against the rules of the language while you type. It is
 - **Watching the disk**: a change to `raga.project`, or to any `.raga` file outside the editor, is picked up without a reload.
   A generic call whose arguments must share a type (`Math.max(1, 2.5)`) and a block that names more values than its callback
   gives (`or_else |why, more|`) are reported.
-- **Generic functions as values**: `identity<i32>` is a function value of type `function(i32) i32` that can be passed, kept and
+- **Generic functions as values**: `identity<i32>` is a function value of type `Function<[i32], i32>` that can be passed, kept and
   returned, a bare generic name is a value only where a function type is expected, and anywhere else it is reported.
 - **Operators**: `[operator(Op.Add)]` is checked on functions, struct methods and class methods: the member must exist in `Op`, and a
   binary operator takes two values (a function) or one besides the object (a method), a unary one takes one or none.
@@ -61,7 +61,7 @@ The analyzer checks code against the rules of the language while you type. It is
 - **Closures**: a function can be defined anywhere, also inside another function or block, and it may use the locals,
   parameters and loop names around it. They are shared with the closure, not copied, so a `let` that a closure changes is
   changed for everyone, and hover marks such a name as "captured by a closure: lives on the heap while a closure uses it".
-  Function values (`function(i32) i32`) can be returned, kept in variables, struct and class fields, Lists and Maps,
+  Function values (`Function<[i32], i32>`) can be returned, kept in variables, struct and class fields, Lists and Maps,
   compared with `==` and called right away with `f()()` or `fns.get(0)(3)`. A trailing block is a closure too.
   The editor types them, checks the arguments of a stored function and the return types, and reports a name used before
   its declaration, an assignment to a captured `const` or parameter, and functions of different types in one return.

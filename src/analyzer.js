@@ -1485,7 +1485,7 @@ class Analysis {
   // the key of a Map is a primitive value or a String: a struct, a class, a collection, an enum or a union is not
   checkMapKey(t, s, e) {
     if (this.isPrelude || !t || isUnk(t)) return;
-    if (t.k === 'prim' || t.k === 'ptr' || t.k === 'param' || t.k === 'fn') return;
+    if (t.k === 'prim' || t.k === 'ptr' || t.k === 'param') return;
     if (t.k === 'named' && t.sym.builtin && t.sym.name === 'String') return;
     this.diag(s, e, `a Map key is a primitive value or a String, not ${str(t)}: key by a String or a number built from the fields`);
   }

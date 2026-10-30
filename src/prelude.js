@@ -77,7 +77,7 @@ const List = struct<T> {
     // Turns the List around, in place.
     const reverse = function() { }
     // Sorts the List in place with a callback: negative when a comes first, 0 when equal, positive otherwise.
-    const sort = function(function(T, T) i32 compare) { }
+    const sort = function(Function<[T, T], i32> compare) { }
 }
 
 // A fixed number of values, each slot with its own type. The position of get and set is a literal.
@@ -262,6 +262,11 @@ const Random = struct {
     // Makes the following numbers repeat: the same seed gives the same numbers.
     [method(Ownership.Static)]
     const seed = function(u64 value) { }
+}
+// A function as a value. Written Function (takes nothing, returns nothing), Function<[i32, String], bool> (parameters in
+// brackets, then the return type), Function<[i32]> (no return type) or Function<void, bool> (no parameters). A Function is
+// a non-primitive value: assignment shares it and == asks whether it is the same function.
+const Function = struct {
 }
 const Weak = struct<T> {
     // Some while the value is alive, None after it was freed.

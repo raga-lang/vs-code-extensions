@@ -64,7 +64,7 @@ class Parser {
     return null;
   }
   startsType(t) {
-    return t.t === 'id' && (PRIMS.has(t.v) || t.v === 'ptr' || t.v === 'function' || /^[A-Z]/.test(t.v));
+    return t.t === 'id' && (PRIMS.has(t.v) || t.v === 'ptr' || /^[A-Z]/.test(t.v));
   }
 
   // ---------------------------------------------------------------- program and statements
@@ -437,27 +437,19 @@ class Parser {
 
   // ---------------------------------------------------------------- types
 
-  // Type: name, name<args>, module.Name, ptr<T>, function(types) ret
+  // Type: name, name<args>, module.Name, ptr<T>, Function, Function<[types], ret>, Function<void, ret>
   parseType() {
     const t = this.tok;
-    if (t.t !== 'id' || (KEYWORDS.has(t.v) && t.v !== 'function')) return null;
-    if (t.v === 'function') {
+    if (t.t !== 'id' || KEYWORDS.has(t.v)) return null;
+    if (t.v === 'Function' && !(this.peek().s === t.e && this.peek().v === '.')) {
       this.next();
-      if (!this.expect('(')) return null;
-      this.paren++;
       const params = [];
-      while (!this.is(')') && this.tok.t !== 'eof') {
-        const ty = this.parseType();
-        if (!ty) { this.err('expected a type'); this.next(); continue; }
-        let name = null;
-        if (this.tok.t === 'id' && !KEYWORDS.has(this.tok.v) && !this.startsType(this.tok)) name = this.next();
-        params.push({ type: ty, nameTok: name });
-        if (!this.eat(',')) break;
-      }
-      this.paren--;
-      this.expect(')');
       let ret = null;
-      if (this.startsType(this.tok) && !this.tok.nl) ret = this.parseType();
+      if (this.is('<') && this.tok.t === 'p') {
+        const got = this.attempt(() => this.parseFunctionTypeArgs(params));
+        if (!got) return null;
+        ret = got.ret;
+      }
       return { k: 'FnType', params, ret, s: t.s, e: this.prevEnd() };
     }
     this.next();
@@ -475,6 +467,32 @@ class Parser {
       if (got) args = got;
     }
     return { k: 'Type', name, path, args, s: t.s, e: this.prevEnd() };
+  }
+
+  // <[i32, String], bool>, <[i32]>, <void, bool>: the parameters in a bracket list or void, then the return type
+  parseFunctionTypeArgs(params) {
+    if (!this.eat('<')) return null;
+    if (this.tok.t === 'id' && this.tok.v === 'void') {
+      this.next();
+    } else {
+      if (!this.eat('[')) return null;
+      this.paren++;
+      while (!this.is(']') && this.tok.t !== 'eof') {
+        const ty = this.parseType();
+        if (!ty) { this.paren--; return null; }
+        params.push({ type: ty, nameTok: null });
+        if (!this.eat(',')) break;
+      }
+      this.paren--;
+      if (!this.eat(']')) return null;
+    }
+    let ret = null;
+    if (this.eat(',')) {
+      ret = this.parseType();
+      if (!ret) return null;
+    }
+    if (!this.eat('>')) return null;
+    return { ret };
   }
 
   parseTypeArgs() {

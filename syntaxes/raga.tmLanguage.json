@@ -185,7 +185,7 @@
           }
         },
         {
-          "match": "\\b(?:(const|let)\\s+)?(String|Array|List|Map|Set|Tuple|Optional|Result)(<[^>\\n]*>)?\\s+([A-Za-z_]\\w*)(?=\\s*=(?!=))",
+          "match": "\\b(?:(const|let)\\s+)?(String|Array|List|Map|Set|Tuple|Optional|Result|Function)(<[^>\\n]*>)?\\s+([A-Za-z_]\\w*)(?=\\s*=(?!=))",
           "captures": {
             "1": {
               "name": "storage.type.raga"
@@ -371,7 +371,7 @@
     },
     "builtin-heap-type": {
       "name": "support.class.builtin.raga",
-      "match": "\\b(String|Array|List|Map|Set|Tuple|Optional|Result)\\b"
+      "match": "\\b(String|Array|List|Map|Set|Tuple|Optional|Result|Function)\\b"
     }
   }
 }

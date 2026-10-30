@@ -171,7 +171,7 @@
   "callback": {
     "prefix": "callback",
     "body": [
-      "const ${1:name} = function(${2:i32 value}, function(${3:i32}) ${4:i32} ${5:callback}) ${4:i32} {",
+      "const ${1:name} = function(${2:i32 value}, Function<[${3:i32}], ${4:i32}> ${5:callback}) ${4:i32} {",
       "\t$0",
       "}"
     ],
@@ -240,7 +240,7 @@
   "fnret": {
     "prefix": "fnret",
     "body": [
-      "const ${1:select} = function(${2:i32 input}) function(${3:i32}) ${4:i32} {",
+      "const ${1:select} = function(${2:i32 input}) Function<[${3:i32}], ${4:i32}> {",
       "\t$0",
       "\treturn ${5:declared_function}",
       "}"
@@ -250,7 +250,7 @@
   "closure": {
     "prefix": "closure",
     "body": [
-      "const ${1:outer} = function(${2:i32 start}) function() ${3:i32} {",
+      "const ${1:outer} = function(${2:i32 start}) Function<void, ${3:i32}> {",
       "\tlet ${4:state} = ${5:0}",
       "\tconst ${6:inner} = function() ${3:i32} {",
       "\t\t$0",

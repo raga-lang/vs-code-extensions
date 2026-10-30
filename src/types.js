@@ -37,9 +37,10 @@ function str(t) {
     }
     case 'param': return t.name;
     case 'fn': {
-      const ps = t.params.map((p) => (p.variadic ? '...' : '') + str(p.type)).join(', ');
-      const ret = t.ret && t.ret.k !== 'void' ? ` ${str(t.ret)}` : '';
-      return `function(${ps})${ret}`;
+      const hasRet = t.ret && t.ret.k !== 'void';
+      if (!t.params.length && !hasRet) return 'Function';
+      const ps = t.params.length ? `[${t.params.map((p) => (p.variadic ? '...' : '') + str(p.type)).join(', ')}]` : 'void';
+      return `Function<${ps}${hasRet ? `, ${str(t.ret)}` : ''}>`;
     }
     case 'typeref': return `type ${t.sym.name}`;
     case 'module': return 'Module';
