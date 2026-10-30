@@ -8,7 +8,7 @@ const { T, str, plain } = require('./types');
 const { getPrelude } = require('./analyzer');
 
 const KEYWORD_DOC = {
-  const: 'Declares a name that cannot be rebound. The value can still change if it is a non-primitive value.',
+  const: 'Declares a name that cannot be rebound. The whole value is read-only too: a field cannot be assigned and push, set and the like cannot be called. Copy it into a let to change the copy.',
   let: 'Declares a name that can be rebound.',
   function: 'A function: const name = function(Type parameter, ...) ReturnType { ... }',
   method: 'A method of a class, interface or trait: const name = method(Type parameter, ...) ReturnType { ... }. Overloads follow the closing brace: } method(String other) { ... }',
@@ -247,7 +247,7 @@ function hover(a, off) {
     if (['var', 'param', 'field', 'property', 'method', 'func'].includes(sym.kind) && hit.node && hit.node.ty && hit.node.ty.k !== 'unk' && hit.node.ty.k !== 'typeref') override = hit.node.ty;
     const code = declarationText(sym, override);
     const doc = sym.doc ? `\n\n${sym.doc}` : '';
-    const captured = sym.captured ? '\n\ncaptured by a closure: lives on the heap while a closure uses it' : '';
+    const captured = sym.captured ? '\n\nused by a closure: the closure uses this variable itself, so the closure cannot outlive it' : '';
     return { start: hit.s, end: hit.e, markdown: '```raga\n' + code + '\n```' + captured + doc };
   }
   const tok = a.parsed.tokens.find((t) => t.s <= off && off <= t.e && t.t !== 'eof');

@@ -6,7 +6,7 @@
 // A comment on the line above a name is its documentation, shown in hover and completion.
 
 module.exports = `
-// A piece of text. A String cannot be changed, and == compares references: use equals to compare the text.
+// A piece of text. A String cannot be changed, and == compares the text.
 const String = struct {
     // The number of characters.
     const len = function() usize { }
@@ -14,8 +14,6 @@ const String = struct {
     const upper = function() String { }
     // True when the part is inside this String.
     const contains = function(String part) bool { }
-    // True when both Strings have the same text.
-    const equals = function(String other) bool { }
     // The parts between the separator, as a List of new Strings.
     const split = function(String separator) List<String> { }
     // A new String without the spaces at both ends.
@@ -42,6 +40,8 @@ const String = struct {
 const Array = struct<T> {
     // The element at the position, throws when it does not exist.
     const get = function(usize index) T { }
+    // The pointer to the element at the position, to change it in place. It is valid until the collection grows or shrinks.
+    const at = function(usize index) ptr<T> { }
     // Replaces the element at the position.
     const set = function(usize index, T value) { }
     // The number of elements.
@@ -54,6 +54,8 @@ const Array = struct<T> {
 const List = struct<T> {
     // The element at the position, throws when it does not exist.
     const get = function(usize index) T { }
+    // The pointer to the element at the position, to change it in place. It is valid until the collection grows or shrinks.
+    const at = function(usize index) ptr<T> { }
     // Replaces the element at the position.
     const set = function(usize index, T value) { }
     // The number of elements.
@@ -119,8 +121,6 @@ const Map = struct<K, V> {
     const keys = function() Array<K> { }
     // The values, in the order of keys().
     const values = function() Array<V> { }
-    // A new Map with the same keys and values.
-    const clone = function() Map<K, V> { }
 }
 
 // A value or nothing.
@@ -153,7 +153,6 @@ const Result = union<T, E> {
     const or_else = function(function(E reason) T replace) T { }
 }
 
-// A weak reference: it does not keep the value alive.
 const Math = class {
     // The ratio of the circumference of a circle to its diameter.
     [field(Ownership.Static)]
@@ -265,14 +264,8 @@ const Random = struct {
 }
 // A function as a value. Written Function (takes nothing, returns nothing), Function<[i32, String], bool> (parameters in
 // brackets, then the return type), Function<[i32]> (no return type) or Function<void, bool> (no parameters). A Function is
-// a non-primitive value: assignment shares it and == asks whether it is the same function.
+// a non-primitive value: assignment copies it, and a Function has no ==.
 const Function = struct {
-}
-const Weak = struct<T> {
-    // Some while the value is alive, None after it was freed.
-    const get = function() Optional<T> { }
-    // True while the value is alive.
-    const alive = function() bool { }
 }
 
 // A value of any type.
@@ -367,6 +360,9 @@ const typeof = function(Any value) TypeInfo { }
 const sizeof = function<T>() usize { }
 // The alignment of a type in bytes.
 const alignof = function<T>() usize { }
+// The address of a variable, a ptr<T>. Only a let variable has one: a const, a parameter and a temporary value do not.
+// Follow the pointer with p.* to read or write the variable.
+const addr = function<T>(T variable) ptr<T> { }
 // Room for count values of a primitive type, filled with zeros.
 const alloc = function<T>(usize count = 1) ptr<T> { }
 // Gives memory from alloc back. free(null) does nothing.

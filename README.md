@@ -10,7 +10,7 @@ The analyzer checks code against the rules of the language while you type. It is
   functions, methods, callbacks and trailing blocks. Hover any name to see its type and its documentation comment.
 - **Completion**
   - after a dot: the fields, properties and methods of structs, classes (with inheritance, traits and interfaces), enums,
-    tagged unions, `String`, `List`, `Array`, `Map`, `Set`, `Tuple`, `Optional`, `Result`, `Weak`, pointers and imported modules
+    tagged unions, `String`, `List`, `Array`, `Map`, `Set`, `Tuple`, `Optional`, `Result`, pointers and imported modules
   - variables, functions and types that are visible at the cursor, built-in functions, primitive types and keywords
   - the field names of a struct or class being created, and the parameter names of a call (`Point(x = ...)`)
   - the variants after `case (`, the modifiers inside `[method(...)]` (`Visibility.`, `Inheritance.`, `Ownership.` and their members), and file paths inside `import("...")`
@@ -37,6 +37,15 @@ The analyzer checks code against the rules of the language while you type. It is
   gives (`or_else |why, more|`) are reported.
 - **Generic functions as values**: `identity<i32>` is a function value of type `Function<[i32], i32>` that can be passed, kept and
   returned, a bare generic name is a value only where a function type is expected, and anywhere else it is reported.
+- **Memory**: every value is owned by its name and assignment copies it, so there is no `clone` and no `equals`. Sharing is a
+  pointer: `addr(x)` gives a `ptr<T>` of a `let` variable (a `const`, a parameter and a temporary value have no address),
+  `p.*` is the value, and `&` is only the bitwise and (`&x` is reported with a hint to write `addr(x)`). A field is reached
+  through a pointer with `.*` too, `p.*.x`, and `p.x` is reported. `const` makes the whole value read-only: assigning a field of a
+  `const` or of a parameter, and calling `push`, `set`, `add`, `remove` and the like on one, is reported. `items.at(i)` gives a
+  `ptr<T>` to an element, `get(i)` a copy. `==` is defined for the primitives, `ptr<T>`, `String` (by its text), enum members and a
+  type that declares `[operator(Op.Eq)]`; on any other value it is reported. A class stored in a variable of its base class
+  or of an interface would lose its fields, so it is reported ("point at it instead, `ptr<People>`"). `alloc<T>(n)`, `free(p)`,
+  `sizeof<T>()` and `Type.from_raw(p)` are the manual memory functions.
 - **Operators**: `[operator(Op.Add)]` is checked on functions, struct methods and class methods: the member must exist in `Op`, and a
   binary operator takes two values (a function) or one besides the object (a method), a unary one takes one or none.
 - **Trailing blocks**: the block after a call is its last argument written in place. The type of the last parameter decides what
@@ -60,9 +69,10 @@ The analyzer checks code against the rules of the language while you type. It is
   `import` that must be given a path or library name written in the code. Calls to built-in methods have their arguments checked.
 - **Closures**: a function can be defined anywhere, also inside another function or block, and it may use the locals,
   parameters and loop names around it. They are shared with the closure, not copied, so a `let` that a closure changes is
-  changed for everyone, and hover marks such a name as "captured by a closure: lives on the heap while a closure uses it".
+  changed for everyone, and hover marks such a name as "used by a closure". A closure does not keep its variables alive, so returning a function that
+  uses the variables of the function that returns it is reported ("they are gone when it ends").
   Function values (`Function<[i32], i32>`) can be returned, kept in variables, struct and class fields, Lists and Maps,
-  compared with `==` and called right away with `f()()` or `fns.get(0)(3)`. A trailing block is a closure too.
+  and called right away with `f()()` or `fns.get(0)(3)`. A function has no `==`. A trailing block is a closure too.
   The editor types them, checks the arguments of a stored function and the return types, and reports a name used before
   its declaration, an assignment to a captured `const` or parameter, and functions of different types in one return.
 - **Attributes** come in three patterns: metadata only (`const note = attribute(String text)`, read with

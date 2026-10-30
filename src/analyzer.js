@@ -37,6 +37,15 @@ class Sym {
   }
 }
 
+// the methods that change a collection in place: they need a let, not a const or a parameter
+const CHANGING = {
+  Array: ['set', 'at'],
+  Tuple: ['set', 'at'],
+  List: ['set', 'at', 'push', 'unshift', 'pop', 'shift', 'insert', 'sort', 'remove', 'reverse'],
+  Set: ['add', 'remove'],
+  Map: ['set', 'remove'],
+};
+
 // the modifiers are members of three built-in enums: Visibility.Private, Inheritance.Final, Ownership.Static.
 // Inside the checks they are handled as lower case words: private, final, static
 const MOD_ENUMS = {
@@ -282,6 +291,7 @@ class Analysis {
         if (!ctx.fn) { if (!this.isPrelude) this.diag(st.s, st.e, 'return belongs to functions only'); return undefined; }
         ctx.fn.returns.push(ty);
         if (ctx.fn.declRet && st.value) this.checkCompatible(ctx.fn.declRet, ty, st.value);
+        this.checkReturnedClosure(st, scope, ctx);
         return undefined;
       }
       case 'Break': case 'Continue': {
@@ -802,7 +812,7 @@ class Analysis {
     for (const f of sym.fields) {
       const tn = f.typeNode;
       if (tn && tn.k === 'Type' && tn.name === sym.name && tn.path.length === 1 && !sym.node.members.some((m) => m.member === 'decl' && m.decl.name === sym.name)) {
-        this.diag(tn.s, tn.e, `a ${sym.name} could never be created, a field cannot hold its own type directly. Use Optional<${sym.name}>, List<${sym.name}> or Weak<${sym.name}>`);
+        this.diag(tn.s, tn.e, `a ${sym.name} could never be created, a field cannot hold its own type directly. Use Optional<${sym.name}>, List<${sym.name}> or a pointer, ptr<${sym.name}>`);
       }
     }
   }
@@ -886,7 +896,7 @@ class Analysis {
 
   // [operator(Op.Add)]: the member must be one of Op, and the parameters must fit: a binary operator takes two values (a function)
   // or one besides the object (a method), a unary one takes one (a function) or none (a method)
-  checkOperatorAttr(attrs, paramCount, isMethod) {
+  checkOperatorAttr(attrs, paramCount, isMethod, typeNames = []) {
     if (this.isPrelude) return;
     const UNARY = ['Neg', 'Not', 'BitNot'];
     const opSym = this.prelude('Op');
@@ -898,6 +908,10 @@ class Analysis {
         const member = v && v.k === 'Member' && v.obj && v.obj.k === 'Ident' && v.obj.name === 'Op' ? v.name : null;
         if (!member) { this.diag(v.s, v.e, 'an operator is written Op.Add, with a member of Op'); continue; }
         if (valid.length && !valid.includes(member)) { this.diag(v.s, v.e, `Op has no member ${member}`); continue; }
+        if (member === 'Eq') {
+          this.eqNames = this.eqNames || new Set();
+          for (const n of typeNames) if (n) this.eqNames.add(n);
+        }
         const unary = UNARY.includes(member);
         const want = (unary ? 1 : 2) - (isMethod ? 1 : 0);
         if (paramCount !== want) {
@@ -909,7 +923,7 @@ class Analysis {
   }
 
   declareFunction(d, fn, scope, ctx, doc, owner) {
-    if (d && d.attrs) this.checkOperatorAttr(d.attrs, fn.params.length, !!owner);
+    if (d && d.attrs) this.checkOperatorAttr(d.attrs, fn.params.length, !!owner, owner ? [owner.owner && owner.owner.name] : fn.params.map((p) => p.typeNode && p.typeNode.name));
     const sym = new Sym('func', d.name, {
       node: fn, declNode: d, doc, tparams: fn.typeParams.map((t) => t.v), defScope: scope, owner: owner ? owner.owner : null,
       isStatic: owner ? owner.isStatic : false, selfType: owner ? owner.selfType : null, returns: [], visibleFrom: d.s, builtin: this.isPrelude,
@@ -922,7 +936,7 @@ class Analysis {
   }
 
   declareClassMethod(m, owner, scope, selfType, overload, docText) {
-    if (m.member === 'method') this.checkOperatorAttr(m.attrs, m.params.length, !m.attrs || !this.modsOf(m.attrs, 'method').has('static'));
+    if (m.member === 'method') this.checkOperatorAttr(m.attrs, m.params.length, !m.attrs || !this.modsOf(m.attrs, 'method').has('static'), [owner && owner.name]);
     const isStatic = this.modsOf(m.attrs, 'method').has('static');
     const fnNode = { k: 'Func', typeParams: m.typeParams || [], params: m.params, ret: m.ret, body: m.body, s: m.s, e: m.e };
     const sym = new Sym(m.member === 'method' ? 'method' : m.member === 'constructor' ? 'ctor' : 'dtor', m.name, {
@@ -1047,8 +1061,7 @@ class Analysis {
     if (!t) return out;
     if (t.k === 'ptr') {
       out.set('at', { name: 'at', kind: 'method', type: T.fn([{ name: 'index', type: T.prim('usize') }], t), doc: 'The pointer to element i, without any check of the position.' });
-      // a field is reached through a pointer to a struct without .*
-      if (t.to && t.to.k === 'named') for (const [n, e] of this.membersOfType(t.to)) if (!out.has(n)) out.set(n, e);
+      // a pointer has no fields or methods of its own: follow it with .* first
       return out;
     }
     if (t.k === 'module') {
@@ -1086,11 +1099,6 @@ class Analysis {
       }
     }
     if (!inherited) {
-      if (sym.tkind === 'struct' && !sym.builtin && sym.kind !== 'variant' && sym.fields.length) {
-        // a copy with some fields changed: clone(x = 5.0), every field may be named, the others are copied
-        const params = sym.fields.filter((f) => !f.isStatic).map((f) => ({ name: f.name, type: subst(this.fieldType(f), map), def: true }));
-        add('clone', { name: 'clone', kind: 'method', type: T.fn(params, t), doc: 'A separate copy. Name fields to change them in the copy: clone(x = 5.0).' });
-      } else if (sym.tkind !== 'prim') add('clone', { name: 'clone', kind: 'method', type: T.fn([], t), doc: 'A separate copy.' });
       if ((sym.tkind === 'struct' || sym.tkind === 'union' || sym.kind === 'variant') && !sym.builtin) {
         add('raw', { name: 'raw', kind: 'method', type: T.fn([], T.ptr(T.prim('u8'))), doc: 'Where the fields are, in C layout.' });
       }
@@ -1138,7 +1146,7 @@ class Analysis {
     };
     addStatics(sym);
     if ((sym.tkind === 'struct' || sym.tkind === 'union') && !sym.builtin) {
-      out.set('fromRaw', { name: 'fromRaw', kind: 'method', type: T.fn([{ name: 'pointer', type: T.ptr(T.prim('u8')) }], T.named(sym, sym.tparams.map((n) => T.param(n)))), doc: 'A new value copied from an address in C layout.' });
+      out.set('from_raw', { name: 'from_raw', kind: 'method', type: T.fn([{ name: 'pointer', type: T.ptr(T.prim('u8')) }], T.named(sym, sym.tparams.map((n) => T.param(n)))), doc: 'A new value copied from an address in C layout.' });
     }
     return out;
   }
@@ -1201,9 +1209,13 @@ class Analysis {
       case 'ListLit': case 'ArrayLit': return this.inferCollection(node, scope, expected, ctx);
       case 'Ident': return this.inferIdent(node, scope, expected, ctx, asCallee);
       case 'Unary': {
-        const t = this.inferExpr(node.expr, scope, node.op === '&' ? null : expected, ctx);
+        if (node.op === '&') {
+          this.inferExpr(node.expr, scope, null, ctx);
+          if (!this.isPrelude) this.diag(node.s, node.e, '& is the bitwise and between two values: the address of a variable is addr(x)');
+          return T.unk;
+        }
+        const t = this.inferExpr(node.expr, scope, expected, ctx);
         if (node.op === '!') return T.prim('bool');
-        if (node.op === '&') return T.ptr(plain(t));
         return t;
       }
       case 'Deref': {
@@ -1288,7 +1300,7 @@ class Analysis {
   }
 
   // a variable, parameter or loop name that a nested function (or a block given to a call) uses is captured:
-  // the closure shares it, so it lives on the heap for as long as a closure uses it
+  // the closure uses the variable itself, not a copy, so it cannot be returned out of the function that owns the variable
   markCaptured(sym, scope) {
     if ((sym.kind !== 'var' && sym.kind !== 'param') || sym.isThis || this.isPrelude) return;
     let declScope = null;
@@ -1299,7 +1311,50 @@ class Analysis {
     const fnOf = (sc) => { for (; sc; sc = sc.parent) { if (sc.kind === 'function') return sc; if (sc.kind === 'file' || sc.kind === 'builtin' || sc.kind === 'type') return null; } return null; };
     const owner = fnOf(declScope);
     const user = fnOf(scope);
-    if (owner && user && owner !== user) sym.captured = true;
+    if (owner && user && owner !== user) { sym.captured = true; user.capturesLocals = true; }
+  }
+
+  inferAddr(node, scope, ctx) {
+    const callee = node.callee;
+    this.ref(callee, scope.lookup('addr'));
+    const arg = node.args[0];
+    if (node.args.length !== 1 || !arg) {
+      node.args.forEach((a) => this.inferExpr(a.value, scope, null, ctx));
+      this.diag(node.s, node.e, 'addr takes one variable: addr(variable)');
+      return T.unk;
+    }
+    const t = this.inferExpr(arg.value, scope, null, ctx);
+    const v = arg.value;
+    if (v.k !== 'Ident') {
+      this.diag(v.s, v.e, 'only a variable has an address, not a temporary value');
+      return T.unk;
+    }
+    const sym = v.sym || scope.lookup(v.name);
+    if (!sym) return T.unk;
+    if (sym.kind === 'func' || sym.kind === 'type') {
+      this.diag(v.s, v.e, `${v.name} is not a variable: only a variable has an address`);
+      return T.unk;
+    }
+    if (!sym.isThis && (sym.kind === 'param' || (sym.kind === 'var' && sym.isConst))) {
+      this.diag(v.s, v.e, `${v.name} is ${sym.kind === 'param' ? 'a parameter' : 'const'}: a pointer to it could change it. Declare it with let to take its address.`);
+      return T.unk;
+    }
+    return isUnk(t) ? T.unk : T.ptr(plain(t));
+  }
+
+  // return(next) where next uses the variables of the function that returns it: they are gone when it ends
+  checkReturnedClosure(st, scope, ctx) {
+    const v = st.value;
+    if (this.isPrelude || !v || v.k !== 'Ident' || !ctx.fn || !ctx.fn.fscope) return;
+    const sym = scope.lookup(v.name);
+    if (!sym || sym.kind !== 'func' || !sym.fscope || !sym.fscope.capturesLocals || !sym.scope0) return;
+    for (let sc = sym.scope0; sc; sc = sc.parent) {
+      if (sc === ctx.fn.fscope) {
+        this.diag(v.s, v.e, `${v.name} uses variables of the function that returns it, and they are gone when it ends: keep the state in a struct, or in memory from alloc`);
+        return;
+      }
+      if (sc.kind === 'file' || sc.kind === 'builtin') return;
+    }
   }
 
   // the method or accessor whose body the scope is in
@@ -1335,7 +1390,31 @@ class Analysis {
   }
 
   // both sides of an operator must have the same type: report only what is certain
+  // == and != are defined for the primitives, ptr<T>, String and enum members, and for a type that declares Op.Eq
+  lacksEquality(t) {
+    if (!t) return false;
+    if (t.k === 'fn' || t.k === 'param') return true;
+    if (t.k !== 'named') return false;
+    const s = t.sym;
+    if (s.tkind === 'enum' || (s.name === 'String' && s.builtin)) return false;
+    const seen = new Set();
+    const declares = (x) => {
+      if (!x || seen.has(x)) return false;
+      seen.add(x);
+      if (((x.analysis || this).eqNames || new Set()).has(x.name)) return true;
+      return [...(x.extendsT || []), ...(x.usesT || [])].some((p) => p && p.k === 'named' && declares(p.sym));
+    };
+    return !declares(s);
+  }
+
   checkOperands(node, l, r) {
+    if ((node.op === '==' || node.op === '!=') && !this.isPrelude) {
+      const bad = [l, r].find((t) => this.lacksEquality(t));
+      if (bad) {
+        this.diag(node.s, node.e, `${node.op} is not defined for ${str(bad)}: compare the parts you care about, or declare it with [operator(Op.Eq)]`);
+        return;
+      }
+    }
     // a value of a type parameter has only what every type has: it can be passed around, stored and compared with == and !=
     const tp = (l && l.k === 'param') ? l : (r && r.k === 'param') ? r : null;
     if (tp && !this.isPrelude && node.op !== '==' && node.op !== '!=') {
@@ -1452,6 +1531,10 @@ class Analysis {
     }
     const members = this.membersOfType(objT);
     const e = members.get(name);
+    if (!e && objT.k === 'ptr' && !this.isPrelude && objT.to && objT.to.k === 'named') {
+      this.diag(tok.s, tok.e, `a pointer has no member ${name}: follow it first with .*, write p.*.${name}`);
+      return T.unk;
+    }
     if (!e) {
       if (objT.k === 'named' && !this.isPrelude && this.staticMembers(objT.sym).has(name) && ['class', 'interface', 'trait'].includes(objT.sym.tkind)) {
         this.diag(tok.s, tok.e, `${name} is static, use it on the class: ${objT.sym.name}.${name}`);
@@ -1464,7 +1547,27 @@ class Analysis {
     }
     refMember(e.sym);
     node.member = e;
+    if (asCallee && !this.isPrelude && objT.k === 'named' && objT.sym.builtin && CHANGING[objT.sym.name] && CHANGING[objT.sym.name].includes(name)) {
+      this.checkNotReadOnly(node.obj, `${name} changes it`, tok);
+    }
     return e.type;
+  }
+
+  // the const or parameter that a place is part of: a.b.c is part of a. A place behind .* is part of the variable the pointer points to.
+  readOnlyRoot(place) {
+    let p = place;
+    while (p && p.k === 'Member') p = p.obj;
+    if (!p || p.k !== 'Ident' || !p.sym || p.sym.isThis) return null;
+    const sym = p.sym;
+    if (sym.kind === 'param') return { name: p.name, what: 'a parameter' };
+    if (sym.kind === 'var' && sym.isConst && !sym.module) return { name: p.name, what: 'const' };
+    return null;
+  }
+
+  checkNotReadOnly(place, change, tok) {
+    const root = this.readOnlyRoot(place);
+    if (!root) return;
+    this.diag(tok.s, tok.e, `${root.name} is ${root.what} and its value cannot change in place, but ${change}. Copy it into a let to change the copy.`);
   }
 
   isKnownShape(sym) {
@@ -1566,6 +1669,8 @@ class Analysis {
       if (p && p.k === 'prim') return { k: 'typeref', sym: this.primSyms[p.n], args: [] };
       return p && p.k === 'named' ? { k: 'typeref', sym: p.sym, args: p.args } : T.unk;
     }
+    // addr(variable): the pointer to a variable
+    if (callee.k === 'Ident' && callee.name === 'addr' && scope.lookup('addr') && scope.lookup('addr').builtin && !this.isPrelude) return this.inferAddr(node, scope, ctx);
     // import("./path")
     if (callee.k === 'Ident' && callee.name === 'import' && scope.lookup('import') && scope.lookup('import').builtin) return this.inferImport(node, scope, ctx);
     let ct = this.inferExpr(callee, scope, null, ctx, true);
@@ -1733,11 +1838,8 @@ class Analysis {
         }
       }
       if (param && names.length) unify(param.type, at, bindings, names);
-      const checked = calleeSym ? true : (node.callee.k === 'Call' || (node.callee.k === 'Member' && node.callee.member && node.callee.member.name === 'clone' && !!node.callee.member.type.params.length));
+      const checked = calleeSym ? true : node.callee.k === 'Call';
       if (param && !hasParam(param.type) && checked) this.checkCompatible(param.type, at, arg.value);
-      if (!arg.name && !calleeSym && node.callee.k === 'Member' && node.callee.member && node.callee.member.name === 'clone' && node.callee.member.type.params.length) {
-        this.diag(arg.value.s, arg.value.e, 'clone takes the names of the fields to change: write p.clone(x = 5.0)');
-      }
       if (arg.name && !param && checked && !(calleeSym && calleeSym.kind === 'tparam')) this.diag(arg.nameTok.s, arg.nameTok.e, `there is no parameter ${arg.name}`);
     }
     if (calleeSym && calleeSym.builtin && !this.isPrelude && ((calleeSym.name === 'format' && calleeSym.owner && calleeSym.owner.name === 'String') || calleeSym.name === '$')) this.checkFormat(node, scope, ctx);
@@ -1956,7 +2058,6 @@ class Analysis {
         }
         return T.named(sym, [key ? plain(key) : T.unk, val ? plain(val) : T.unk]);
       }
-      if (name === 'Weak') { const ts = argTypes(); return T.named(sym, [ts[0] ? plain(ts[0]) : T.unk]); }
       if (name === 'Any') { argTypes(); return T.named(sym); }
     }
     if (sym.tkind === 'enum') { argTypes(); return T.named(sym); }
@@ -2068,6 +2169,7 @@ class Analysis {
       tt = target.sym.type;
       this.diag(target.s, target.e, `${target.name} is a parameter or a loop name and is fixed. Copy it into a let to change it: let local = ${target.name}`);
     }
+    if (target.k === 'Member' && target.nameTok && !this.isPrelude) this.checkNotReadOnly(target.obj, `this assigns the field ${target.name}`, target.nameTok);
     if (target.k === 'Member' && target.sym && target.sym.kind === 'property' && !target.sym.node.setter) {
       this.diag(target.nameTok.s, target.nameTok.e, `${target.name} has no set, it is read-only`);
     }
@@ -2105,7 +2207,17 @@ class Analysis {
     }
     if (declared.k === 'named' && actual.k === 'named' && !this.assignable(declared, actual)) {
       this.diag(node.s, node.e, `${str(actual)} is not ${str(declared)}`);
+    } else if (declared.k === 'named' && actual.k === 'named' && declared.sym !== actual.sym && actual.sym.tkind === 'class' && this.extendsSym(actual.sym, declared.sym)) {
+      this.diag(node.s, node.e, `a ${actual.sym.name} stored as a ${declared.sym.name} would lose its extra fields: point at it instead, ptr<${declared.sym.name}> p = addr(variable)`);
     }
+  }
+
+  // does the class extend, implement or use the target?
+  extendsSym(s, target, seen = new Set()) {
+    if (!s || seen.has(s)) return false;
+    seen.add(s);
+    if (s === target) return true;
+    return [...(s.extendsT || []), ...(s.implementsT || []), ...(s.usesT || [])].some((p) => p && p.k === 'named' && this.extendsSym(p.sym, target, seen));
   }
 
   assignable(declared, actual) {
