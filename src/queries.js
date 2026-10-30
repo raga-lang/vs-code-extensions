@@ -22,12 +22,12 @@ const KEYWORD_DOC = {
   if: 'if (condition) { } elif (condition) { } else { }',
   for: 'for (collection) |item, index| { }',
   while: 'while (condition) { }',
-  loop: 'loop { } runs until break.',
+  loop: 'loop { } runs until break().',
   match: 'match (value) { case (Variant) |data| { } default { } }',
   switch: 'switch (integer or char) { case (1, 2) { } default { } }',
-  return: 'Leaves the function and gives a value back.',
-  break: 'Leaves the innermost loop. break 1 leaves it and the loop around it, break 2 three loops: the number is how many loops around the innermost one are left too, a whole number written in the code, 0 when it is left out.',
-  continue: 'Goes to the next pass of the innermost loop. continue 1 ends the inner loop and goes to the next pass of the loop around it, continue 2 the one around that.',
+  return: 'A call that leaves the function: return(value) gives a value back, return() gives nothing. A block is the one argument that needs no parentheses: return { 1, 2 }, return |x| { }.',
+  break: 'A call that leaves the innermost loop: break(). break(1) leaves it and the loop around it, break(2) three loops: the number is how many loops around the innermost one are left too, a whole number written in the code, 0 when it is left out.',
+  continue: 'A call that goes to the next pass of the innermost loop: continue(). continue(1) ends the inner loop and goes to the next pass of the loop around it, continue(2) the one around that.',
   try: 'try { } catch |e| { } finally { }',
   catch: 'Handles an error thrown inside try: catch |e| { } gives e as an IError (e.message, e.code, e.as<T>()).',
   finally: 'Runs after try and catch, whatever happened.',
@@ -332,11 +332,11 @@ function documentSymbols(a) {
 
 // ------------------------------------------------------------------ signature help
 
-// the snippet of a block for a callback of the function type ft: |names| { return ... } (names from the type, return when it gives a value)
+// the snippet of a block for a callback of the function type ft: |names| { return(...) } (names from the type, return(...) when it gives a value)
 function blockSnippet(ft, first, lead = ' ') {
   const names = ft.params.map((p, i) => `\${${first + i}:${p.name || 'value' + (i + 1)}}`);
   const pipes = names.length ? `${lead}|${names.join(', ')}|` : lead.replace(/^$/, '');
-  const returns = ft.ret && ft.ret.k !== 'void' && !isUnkType(ft.ret) ? `\treturn \$${first + names.length}` : `\t\$${first + names.length}`;
+  const returns = ft.ret && ft.ret.k !== 'void' && !isUnkType(ft.ret) ? `\treturn(\$${first + names.length})` : `\t\$${first + names.length}`;
   return `${names.length ? pipes : lead}${names.length ? '' : ''}${names.length ? ' ' : ''}{\n${returns}\n}`.replace(/^( ?)\|/, '$1|');
 }
 function isUnkType(t) { return !t || t.k === 'unk'; }

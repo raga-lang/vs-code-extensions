@@ -103,7 +103,8 @@ class Parser {
     return attrs;
   }
 
-  // break, break(), break 1, break(1): the optional number is how many loops around the innermost one are left too
+  // break() and break(1): a call, so the parentheses are always written. The number is how many loops around the
+  // innermost one are left too.
   parseBreak() {
     const kw = this.next();
     let count = null;
@@ -117,12 +118,13 @@ class Parser {
         this.paren--;
         this.expect(')');
       }
-    } else if (!t.nl && t.t !== 'eof') {
-      // a one-operand form without parentheses: a number, a signed number, or a name (the analyzer says a name is not allowed)
-      const n = this.peek();
-      if (t.t === 'num') count = this.parsePrimary();
-      else if (t.t === 'p' && (t.v === '-' || t.v === '+') && n.t === 'num' && !n.nl) count = this.parseUnary ? this.parseUnary() : this.parsePrimary();
-      else if (t.t === 'id' && !KEYWORDS.has(t.v)) count = this.parsePrimary();
+    } else if (t.t === 'p' && (t.v === '{' || t.v === '|') && !t.nl) {
+      this.err(`${kw.v} takes a number in parentheses, write ${kw.v}(1)`, t);
+      this.attempt(() => { if (this.is('|')) this.parsePipes(); return this.is('{') ? this.parseBlock() : null; });
+    } else {
+      const ends = t.nl || t.t === 'eof' || (t.t === 'p' && (t.v === '}' || t.v === ';'));
+      this.err(`${kw.v} is a call: write ${kw.v}(${ends ? '' : 'value'})`, kw);
+      if (!ends) count = this.parseExpr();
     }
     return { k: kw.v === 'break' ? 'Break' : 'Continue', count, s: kw.s, e: this.prevEnd() };
   }
@@ -367,12 +369,34 @@ class Parser {
     return { k: 'Try', body, catchParams, catchBody, finally: fin, s: kw.s, e: this.prevEnd() };
   }
 
+  // return(value), return(), and a block as the one argument: return { 1, 2 } or return |x| { ... }
   parseReturn() {
     const kw = this.next();
     let value = null;
+    let block = null;
     const t = this.tok;
-    if (!t.nl && t.t !== 'eof' && !(t.t === 'p' && (t.v === '}' || t.v === ';'))) value = this.parseExpr();
-    return { k: 'Return', value, s: kw.s, e: this.prevEnd() };
+    if (t.t === 'p' && t.v === '(' && !t.nl) {
+      if (this.isAt(1, ')')) { this.next(); this.next(); }
+      else {
+        this.next();
+        this.paren++;
+        value = this.parseExpr();
+        this.paren--;
+        if (this.is(',')) this.err('return gives one value', this.tok);
+        while (this.eat(',')) this.parseExpr();
+        this.expect(')');
+      }
+    } else if (!t.nl && t.t === 'p' && t.v === '{') {
+      block = this.parseTrailingBlock([]);
+    } else if (!t.nl && t.t === 'p' && t.v === '|' && this.looksLikePipes0()) {
+      const names = this.parsePipes();
+      block = this.parseTrailingBlock(names);
+    } else {
+      const ends = t.nl || t.t === 'eof' || (t.t === 'p' && (t.v === '}' || t.v === ';'));
+      this.err(`return is a call: write return(${ends ? '' : 'value'})`, kw);
+      if (!ends) value = this.parseExpr();
+    }
+    return { k: 'Return', value, block, s: kw.s, e: this.prevEnd() };
   }
 
   // export { a, b }: a call whose last argument is a block of names of this file's declarations
@@ -630,12 +654,10 @@ class Parser {
     return this.isAt(k, '|');
   }
 
-  // A call without parentheses. After a name, on the same line, the next token decides:
-  //   { or |names| {    a trailing block and no argument:  run { ... }
-  //   a name            the one argument:  double base, show user.name, and a name with a block is a call too:
-  //                     double sum { 1, 2, 3 } is double(sum({ 1, 2, 3 }))
-  // A written-out value (a number, a String, true) is not a bare argument and needs the parentheses. Anything else
-  // leaves the name alone: it is the function value.
+  // A call without parentheses. After a name, on the same line, only a block can follow:
+  //   { or |names| {    a trailing block and no other argument:  run { ... }
+  // A name after a name is not an argument without parentheses: it is read as the call it was meant to be, so the rest
+  // of the line is still checked, and reported. A written-out value (a number, a String, true) is reported too.
   tryParenless(e) {
     const t = this.tok;
     if (t.nl || t.t === 'eof') return null;
@@ -645,12 +667,12 @@ class Parser {
     if (t.t === 'p' && (t.v === '{' || (t.v === '|' && this.looksLikePipes()))) {
       return this.finishCall(mk([]));
     }
-    const arg = this.parenlessOperand();
+    const arg = this.parenlessOperand(e);
     if (!arg) return null;
     return mk([{ name: null, value: arg }]);
   }
 
-  parenlessOperand() {
+  parenlessOperand(callee) {
     const t = this.tok;
     const written = t.t === 'num' || t.t === 'chr' || t.t === 'str' || (t.t === 'p' && t.v === '[')
       || (t.t === 'id' && (t.v === 'true' || t.v === 'false' || t.v === 'null'));
@@ -660,13 +682,15 @@ class Parser {
       return this.parsePrimary();
     }
     if (t.t !== 'id' || (KEYWORDS.has(t.v) && t.v !== 'this')) return null;
-    // a name, with the members after it. A name after it, or a block, makes it a call without parentheses in its turn
+    // a name, with the members after it
+    const first = this.tok;
     let e = this.parsePrimary();
     while (this.is('.') && this.peek().t === 'id' && !this.peek().nl && !KEYWORDS.has(this.peek().v)) {
       this.next();
       const nameTok = this.next();
       e = { k: 'Member', obj: e, name: nameTok.v, nameTok, typeArgs: null, s: e.s, e: this.prevEnd() };
     }
+    this.err(`a name is not an argument without parentheses, only a block is: write ${this.text.slice(callee.s, callee.e)}(${first.v})`, first);
     return this.tryParenless(e) || e;
   }
 

@@ -222,7 +222,15 @@ class Analysis {
   checkStmt(st, scope, ctx, top) {
     switch (st.k) {
       case 'Decl': return this.checkDecl(st, scope, ctx, top);
-      case 'ExprStmt': this.inferExpr(st.expr, scope, null, ctx); return undefined;
+      case 'ExprStmt': {
+        const ty = this.inferExpr(st.expr, scope, null, ctx);
+        // a name is the function, never a call: as a whole statement it does nothing
+        if (ty && ty.k === 'fn' && (st.expr.k === 'Ident' || st.expr.k === 'Member') && !this.isPrelude) {
+          const text = this.text.slice(st.expr.s, st.expr.e);
+          this.diag(st.expr.s, st.expr.e, `${text} is a function and this does not call it: write ${text}()`);
+        }
+        return undefined;
+      }
       case 'Assign': return this.checkAssign(st, scope, ctx);
       case 'Block': return this.checkBlock(st, scope, ctx);
       case 'If': {
@@ -263,6 +271,14 @@ class Analysis {
       case 'Return': {
         let ty = T.void;
         if (st.value) ty = this.inferExpr(st.value, scope, ctx.fn && ctx.fn.declRet, ctx);
+        else if (st.block) {
+          // return { 1, 2 } and return |x| { ... }: the block is the value, and the declared type says what it is
+          const want = ctx.fn && ctx.fn.declRet;
+          if (want && want.k === 'fn') { this.checkTrailingBlock(st.block, want, scope, ctx); ty = want; }
+          else if (st.block.items) ty = this.inferExpr(st.block.items, scope, want, ctx);
+          else { this.checkTrailingBlock(st.block, null, scope, ctx); ty = T.unk; }
+          st.value = st.block.items || st.block.body;
+        }
         if (!ctx.fn) { if (!this.isPrelude) this.diag(st.s, st.e, 'return belongs to functions only'); return undefined; }
         ctx.fn.returns.push(ty);
         if (ctx.fn.declRet && st.value) this.checkCompatible(ctx.fn.declRet, ty, st.value);
@@ -282,7 +298,7 @@ class Analysis {
           this.diag(c.s, c.e, `${word} cannot take a negative number: 0 is the innermost loop`);
         } else {
           const n = Number(text);
-          if (n >= ctx.loops) this.diag(c.s, c.e, `${word} ${n} leaves ${n + 1} loops but only ${ctx.loops} surround${ctx.loops === 1 ? 's' : ''} it`);
+          if (n >= ctx.loops) this.diag(c.s, c.e, `${word}(${n}) leaves ${n + 1} loops but only ${ctx.loops} surround${ctx.loops === 1 ? 's' : ''} it`);
         }
         return undefined;
       }
@@ -1258,13 +1274,6 @@ class Analysis {
         }
         this.diag(node.s, node.e, `${name} is generic and has no single type: write ${name}<${t.tparams.join(', ')}> with the types filled in`);
         return T.unk;
-      }
-      // the name of a function with no parameters, with nothing after it, is a call: `answer` is answer(). Where a
-      // function is wanted (an argument or a variable of a function type) the name is the function itself.
-      if (t && t.k === 'fn' && !asCallee && !node.typeArgs && !t.overloads && !(t.tparams && t.tparams.length) && t.params.length === 0
-        && !(expected && expected.k === 'fn') && !this.isPrelude) {
-        node.bareCall = true;
-        return t.ret || T.void;
       }
       return t;
     }

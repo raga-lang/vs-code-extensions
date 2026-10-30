@@ -308,7 +308,7 @@
   "breakout": {
     "prefix": "breakout",
     "body": [
-      "break ${1:1}"
+      "break(${1:1})"
     ],
     "description": "break with a count: how many loops around the innermost one are left too (0 is the innermost loop only)"
   }

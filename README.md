@@ -27,9 +27,11 @@ The analyzer checks code against the rules of the language while you type. It is
   so `Error(message = "boom", code = 2)` is an ordinary creation and your own error is a class that implements `IError` or extends
   `Error`. `throw` takes only those, `catch |e|` gives an `IError` (`e.message`, `e.code`, `e.is<T>()`, `e.as<T>()`), and
   `implements(Error)` is reported ("Error is a class: write implements(IError) or extends(Error)").
-- **break and continue** take an optional number of loops to leave besides the innermost one: `break` is `break 0`, `break 1`
-  leaves two loops, `continue 1` goes to the next pass of the loop around. The number is a whole number written in the code, and a
-  number larger than the loops around, a negative one, and a name are reported.
+- **return, break and continue are calls**: `return(value)`, `return()`, `break()`, `continue()`. The parentheses are always
+  written, a word alone is reported ("break is a call: write break()"), and `return` takes a block as its one argument without
+  parentheses (`return { 1, 2 }`, `return |x| { }`). `break` and `continue` take an optional number of loops to leave besides the
+  innermost one: `break()` is `break(0)`, `break(1)` leaves two loops, `continue(1)` goes to the next pass of the loop around. The number
+  is a whole number written in the code, and a number larger than the loops around, a negative one, and a name are reported.
 - **Watching the disk**: a change to `raga.project`, or to any `.raga` file outside the editor, is picked up without a reload.
   A generic call whose arguments must share a type (`Math.max(1, 2.5)`) and a block that names more values than its callback
   gives (`or_else |why, more|`) are reported.
@@ -38,7 +40,7 @@ The analyzer checks code against the rules of the language while you type. It is
 - **Operators**: `[operator(Op.Add)]` is checked on functions, struct methods and class methods: the member must exist in `Op`, and a
   binary operator takes two values (a function) or one besides the object (a method), a unary one takes one or none.
 - **Trailing blocks**: the block after a call is its last argument written in place. The type of the last parameter decides what
-  it is: a function type takes a function body (`|n| { return n }`), an `Array<T>` takes its values (`{ 1, 2, 3 }`, each one checked
+  it is: a function type takes a function body (`|n| { return(n) }`), an `Array<T>` takes its values (`{ 1, 2, 3 }`, each one checked
   against `T`), and a struct takes one `name = value` line per field (every field once, any order, each value checked against
   its field, a missing, unknown or repeated field is reported). Any other last parameter, a variadic one, one already given
   inside the parentheses (also when it was given by position), a `|names|` on an `Array` or struct block, and a creation such as
@@ -47,7 +49,7 @@ The analyzer checks code against the rules of the language while you type. It is
   parameters and a struct with no fields look the same, so the type of the last parameter is the only thing that tells them apart.
 - **Element types of a collection literal**: when a type is asked for (`Array<i32>`, `List<String>`, as a parameter, a declared variable or a trailing block), each element is checked against it, so `tally("scores") { 'f' }` reports `char is not i32`.
 - **Trailing blocks and chains in completion**: after the `)` of a call whose last parameter is a callback, completion offers the
-  block that fills it, with the names the callback gives (`|result| { return }`, and `return` when the callback gives a value);
+  block that fills it, with the names the callback gives (`|result| { }`, and `return(...)` when the callback gives a value);
   for an `Array` it offers `{ }` and for a struct it offers a block with one line per field (`name = `, `size = `);
   after a space it opens by itself. After the `}` of a block on the same line, it offers the next clauses of the chain, the
   methods of what the call gave back whose last parameter is a callback (`on_error |error| { }`, `cleanup { }`).
@@ -65,18 +67,17 @@ The analyzer checks code against the rules of the language while you type. It is
   its declaration, an assignment to a captured `const` or parameter, and functions of different types in one return.
 - **Attributes** come in three patterns: metadata only (`const note = attribute(String text)`, read with
   `attributes_of`), a build hook (`... |target, text| { }`, runs once per use while the program is built) and a call hook
-  (`} call |target, args, next| { return next(args) }`, runs on every call). Block parameters are always named in the
+  (`} call |target, args, next| { return(next(args)) }`, runs on every call). Block parameters are always named in the
   pipes (`target` first, then the declared parameters in order, or `...rest` for an attribute without parameters), nothing
   is in scope by magic and the number of names is checked.
-- **Calls without parentheses**: after a function name the next token on the same line decides. `{` or `|x| {` is a trailing
-  block with no argument outside it (`run { }`, `repeat |i| { }`, and `show { x = 1 }` for a function whose only parameter is a struct).
-  A name, with its `.members`, is the one argument (`double base`, `show user.name`), and a name followed by another name nests to
-  the right, so `a b c` is `a(b(c))`. A name with a block is a call too, so it can be the argument: `double sum {1, 3, 4, 5}` is
-  `double(sum({1, 3, 4, 5}))`. A written-out value (a number, a char, `true`/`false`, a String, a List, `null`) is not a bare argument
-  and reports a hint to use parentheses: `double 5` is an error, write `double(5)`. `double -x` is the subtraction `double - x`,
-  and a name followed by an argument that is not a function reports "x is not a function, it cannot take an argument". The name of a
-  function that takes no parameters, with nothing after it, is a call (`answer` is `answer()`); where a function is wanted, as an
-  argument or a variable of a function type, a name is the function itself, and so is the name of a function that takes parameters.
+- **Calls and names**: a call has parentheses, `double(base)`, `answer()`, `nums.push(x)`. A name without parentheses is the function
+  itself, never a call, whether the function takes parameters or not: `double(answer)` passes the function, `double(answer())` passes what
+  it gives, and a name used as a whole statement (`answer`) is reported ("answer is a function and this does not call it").
+  The one exception is a block: `{` or `|x| {` after a name is a trailing block that is the one argument (`run { }`,
+  `repeat |i| { }`, and `show { x = 1 }` for a function whose only parameter is a struct). A name after a name is not an argument
+  without parentheses and reports a hint (`double base` is an error, write `double(base)`), and so does a written-out value
+  (`double 5`, write `double(5)`). `double -x` is the subtraction `double - x`, and a name followed by a block when it is not a
+  function reports "x is not a function, it cannot take a block".
 - **Chains without dots after a block**: calls that return values are chained with a dot, `user().select().limit(1)`. When the last
   argument of a call is written as a block (a callback, an Array or a struct) a dot after the closing brace would look strange, so the
   next name follows the brace on the same line: `user { } select { } limit (1)`. Each step is a call of a method of what the step before
